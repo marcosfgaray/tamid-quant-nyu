@@ -68,3 +68,11 @@ def test_per_trade_ignores_nesting():
     P = _book([65_000, 66_000], [-1, -1], [0.05, 0.05])
     q = size_per_trade(P, CAP, 100)
     assert list(q) == [31, 31] and worst_case(P, q) < -CAP
+
+
+def test_order_fee_rounds_up_per_order():
+    from tail_sizer import order_fee
+    assert order_fee(1, 0.01) == pytest.approx(0.01)      # 0.000693 rounds up to 1c
+    assert order_fee(30, 0.01) == pytest.approx(0.03)     # 0.02079 rounds up to 3c
+    assert order_fee(100, 0.5) == pytest.approx(1.75)     # exact cents stay put despite float noise
+    assert order_fee(0, 0.5) == 0.0

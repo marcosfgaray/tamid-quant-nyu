@@ -161,3 +161,29 @@ def test_summary_reports_clipped_sizing_prices():
     tr2 = tr.copy()
     tr2.loc[tr2.index[:3], "size_price"] = 0.01
     assert f"3 of {len(tr)} trades sized at the 1c/99c clip" in summarize(tr2, dy, Config(), "portfolio")
+
+
+def _exact_realized_worst(t):
+    from tail_sizer import order_fee, payoff_matrix
+    grid = np.unique(t.floor)
+    gross = payoff_matrix(grid, t.floor.values, t.side.values, t.fill.values, fee_rate=0.0) @ t.q.values
+    return float(gross.min() - sum(order_fee(q, p) for q, p in zip(t.q, t.fill)))
+
+
+def test_trade_pnl_uses_rounded_order_fee():
+    from tail_sizer import order_fee
+    tr, _ = run(_synth(), Config())
+    assert len(tr) > 0
+    for r in tr.itertuples():
+        assert r.fee == pytest.approx(order_fee(r.q, r.fill))
+        assert r.pnl == pytest.approx(r.q * r.side * (r.y - r.fill) - order_fee(r.q, r.fill))
+
+
+def test_realized_worst_uses_rounded_fees_and_stays_within_cap():
+    obs = _synth()
+    tr, dy = run(obs, Config())
+    floors = obs.drop_duplicates("ticker").set_index("ticker").floor
+    for day, t in tr.assign(floor=tr.ticker.map(floors)).groupby("day"):
+        w = _exact_realized_worst(t)
+        assert dy.loc[dy.day == day, "realized_worst"].iloc[0] == pytest.approx(w)
+        assert w >= -30 - 1e-9

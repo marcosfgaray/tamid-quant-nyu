@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from tail_sizer import fee, payoff_matrix, size_per_trade, size_portfolio
+from tail_sizer import fee, order_fee, payoff_matrix, size_per_trade, size_portfolio
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "output" / "btc_pm_results" / "btc_observations.csv"
@@ -116,8 +116,11 @@ def _book_payoffs(grid, pos, price_col, fee_rate):
 
 
 def _held_vector(grid, held, price_col, fee_rate):
-    P = _book_payoffs(grid, held, price_col, fee_rate)
-    return P @ np.array([p["q"] for p in held], float) if held else np.zeros(len(grid) + 1)
+    """Book payoff per scenario at the given prices, net of each order's fee rounded up to the cent."""
+    if not held:
+        return np.zeros(len(grid) + 1)
+    gross = _book_payoffs(grid, held, price_col, 0.0) @ np.array([p["q"] for p in held], float)
+    return gross - sum(order_fee(p["q"], p[price_col], fee_rate) for p in held)
 
 
 def run(obs, cfg, sizing="portfolio"):
@@ -153,7 +156,10 @@ def run(obs, cfg, sizing="portfolio"):
                 base = _held_vector(grid, held, "fill", cfg.fee_rate)
                 P = _book_payoffs(grid, cands, "size_price", cfg.fee_rate)
                 if sizing == "portfolio":
-                    q = size_portfolio(np.array([c["edge"] for c in cands]), P, base, cfg.cap, cfg.q_max)
+                    # the LP uses the linear per-contract fee; rounding up adds at most 1c per order, so reserve
+                    # 1c of cap per candidate order to keep the worst case within the cap after rounding
+                    q = size_portfolio(np.array([c["edge"] for c in cands]), P, base, cfg.cap - 0.01 * len(cands),
+                                       cfg.q_max)
                 elif sizing == "one":
                     q = np.ones(len(cands), dtype=int)
                 else:
@@ -163,9 +169,9 @@ def run(obs, cfg, sizing="portfolio"):
                     fill = c["ask_f"] if c["side"] == 1 else c["bid_f"]
                     if qi <= 0:
                         continue
-                    fe = fee(fill, cfg.fee_rate)
+                    fe = order_fee(int(qi), fill, cfg.fee_rate)      # whole order's fee, in dollars
                     placed.append(dict(c, q=int(qi), fill=float(fill), fee=fe,
-                                       pnl=qi * (c["side"] * (c["y"] - fill) - fe)))
+                                       pnl=qi * c["side"] * (c["y"] - fill) - fe))
                 if placed:
                     assumed = float((base + _held_vector(grid, placed, "size_price", cfg.fee_rate)).min())
                     held.extend(placed)

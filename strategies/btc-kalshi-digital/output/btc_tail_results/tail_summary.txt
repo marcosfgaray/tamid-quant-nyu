@@ -1,40 +1,40 @@
 Loaded 6242 observations over 120 expiry days (2026-06-17 -> 2026-10-14)
 
 PORTFOLIO (worst-case cap): 73 trades over 43 of 50 days (cap 3.0% of $1,000 = $30.00)
-  sell YES 3h: n=  12  contracts=   333  pnl=$+3.43  hit=0.000
-  sell YES 6h: n=  25  contracts=   750  pnl=$+7.54  hit=0.000
-  buy YES  3h: n=  14  contracts=   392  pnl=$+3.93  hit=1.000
-  buy YES  6h: n=  22  contracts=   660  pnl=$+9.51  hit=1.000
-  mean daily return +0.049% [95% CI +0.039%, +0.062%], sd 0.042%
-  cumulative return +2.441%, max drawdown 0.000%, worst day +0.000%
-  max assumed worst case 2.972% of bankroll, max realized worst case 2.972%, breaches (realized worst past cap) 0
+  sell YES 3h: n=  12  contracts=   333  pnl=$+3.33  hit=0.000
+  sell YES 6h: n=  25  contracts=   750  pnl=$+7.31  hit=0.000
+  buy YES  3h: n=  14  contracts=   392  pnl=$+3.80  hit=1.000
+  buy YES  6h: n=  22  contracts=   660  pnl=$+9.32  hit=1.000
+  mean daily return +0.048% [95% CI +0.037%, +0.060%], sd 0.042%
+  cumulative return +2.376%, max drawdown 0.000%, worst day +0.000%
+  max assumed worst case 2.975% of bankroll, max realized worst case 2.973%, breaches (realized worst past cap) 0
   mean capital deployed $42.18 per day
   73 of 73 trades sized at the 1c/99c clip (slippage buffer inactive there)
-  first half mean daily +0.036% | second half +0.062%
+  first half mean daily +0.035% | second half +0.060%
 
 B1 one contract per signal: 203 trades over 43 of 50 days (cap 3.0% of $1,000 = $30.00)
-  sell YES 3h: n=  53  contracts=    53  pnl=$+0.65  hit=0.000
-  sell YES 6h: n=  61  contracts=    61  pnl=$+0.62  hit=0.000
-  buy YES  3h: n=  41  contracts=    41  pnl=$+0.43  hit=1.000
-  buy YES  6h: n=  48  contracts=    48  pnl=$+0.85  hit=1.000
-  mean daily return +0.005% [95% CI +0.003%, +0.007%], sd 0.007%
-  cumulative return +0.255%, max drawdown 0.000%, worst day +0.000%
-  max assumed worst case 0.985% of bankroll, max realized worst case 0.984%, breaches (realized worst past cap) 0
+  sell YES 3h: n=  53  contracts=    53  pnl=$+0.17  hit=0.000
+  sell YES 6h: n=  61  contracts=    61  pnl=$+0.06  hit=0.000
+  buy YES  3h: n=  41  contracts=    41  pnl=$+0.05  hit=1.000
+  buy YES  6h: n=  48  contracts=    48  pnl=$+0.42  hit=1.000
+  mean daily return +0.001% [95% CI +0.000%, +0.003%], sd 0.006%
+  cumulative return +0.070%, max drawdown 0.000%, worst day +0.000%
+  max assumed worst case 0.999% of bankroll, max realized worst case 0.998%, breaches (realized worst past cap) 0
   mean capital deployed $4.01 per day
   203 of 203 trades sized at the 1c/99c clip (slippage buffer inactive there)
-  first half mean daily +0.002% | second half +0.008%
+  first half mean daily +0.000% | second half +0.003%
 
 B2 per-trade cap: 203 trades over 43 of 50 days (cap 3.0% of $1,000 = $30.00)
-  sell YES 3h: n=  53  contracts=  1590  pnl=$+19.56  hit=0.000
-  sell YES 6h: n=  61  contracts=  1830  pnl=$+18.71  hit=0.000
-  buy YES  3h: n=  41  contracts=  1230  pnl=$+12.85  hit=1.000
-  buy YES  6h: n=  48  contracts=  1440  pnl=$+25.52  hit=1.000
-  mean daily return +0.153% [95% CI +0.102%, +0.224%], sd 0.221%
-  cumulative return +7.664%, max drawdown 0.000%, worst day +0.000%
-  max assumed worst case 29.553% of bankroll, max realized worst case 29.525%, breaches (realized worst past cap) 30
+  sell YES 3h: n=  53  contracts=  1590  pnl=$+19.08  hit=0.000
+  sell YES 6h: n=  61  contracts=  1830  pnl=$+18.15  hit=0.000
+  buy YES  3h: n=  41  contracts=  1230  pnl=$+12.47  hit=1.000
+  buy YES  6h: n=  48  contracts=  1440  pnl=$+25.10  hit=1.000
+  mean daily return +0.150% [95% CI +0.099%, +0.220%], sd 0.219%
+  cumulative return +7.480%, max drawdown 0.000%, worst day +0.000%
+  max assumed worst case 29.567% of bankroll, max realized worst case 29.539%, breaches (realized worst past cap) 30
   mean capital deployed $120.16 per day
   203 of 203 trades sized at the 1c/99c clip (slippage buffer inactive there)
-  first half mean daily +0.057% | second half +0.250%
+  first half mean daily +0.055% | second half +0.244%
 
 Worst expiry day vs the cap:
   PORTFOLIO (worst-case cap)   worst realized day +0.000% of bankroll, days with realized worst case past cap: 0

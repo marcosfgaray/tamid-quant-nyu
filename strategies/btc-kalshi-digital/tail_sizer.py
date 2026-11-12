@@ -7,12 +7,22 @@ settlement scenario between the day's strikes:
   row j >= 1 settlement just above grid[j-1]           (contract i is YES iff strike_i <= grid[j-1])
 Side convention: +1 = buy YES, -1 = sell YES. Payoffs are per contract, net of the Kalshi fee.
 """
+import math
+
 import numpy as np
 
 
 def fee(p, rate=0.07):
     """Kalshi taker fee per contract at price p (ASSUMPTION copied from the main backtest)."""
     return rate * p * (1 - p)
+
+
+def order_fee(q, p, rate=0.07):
+    """Kalshi fee for one order of q contracts at price p: rate * q * p * (1 - p), rounded UP to the cent.
+    (The round() guards against float noise turning an exact cent amount into the next cent.)"""
+    if q <= 0:
+        return 0.0
+    return math.ceil(round(rate * q * p * (1 - p) * 100, 9)) / 100
 
 
 def payoff_matrix(grid, strikes, sides, prices, fee_rate=0.07):
