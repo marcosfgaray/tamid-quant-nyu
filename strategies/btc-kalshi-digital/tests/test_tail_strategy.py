@@ -118,3 +118,26 @@ def test_bad_fill_shows_in_realized_worst():
 def test_per_trade_baseline_can_exceed_cap():
     _, dy = run(_synth(), Config(), sizing="per_trade")
     assert (dy.realized_worst < -30).any()
+
+
+# ---------------------------------------------------------------- reporting / CLI
+from tail_strategy import main, summarize
+
+
+def test_summarize_empty():
+    tr, dy = run(_synth(days=25), Config())
+    assert summarize(tr, dy, Config(), "portfolio") == "portfolio: no trades"
+
+
+def test_summarize_reports_cap_and_breaches():
+    tr, dy = run(_synth(), Config())
+    s = summarize(tr, dy, Config(), "portfolio")
+    assert "max assumed worst case" in s and "breaches" in s and "max drawdown" in s
+
+
+def test_main_writes_outputs(tmp_path):
+    p = tmp_path / "obs.csv"
+    _synth().to_csv(p, index=False)
+    main(["--data", str(p), "--out-dir", str(tmp_path / "out"), "--no-plot"])
+    for f in ("tail_trades.csv", "tail_daily.csv", "tail_summary.txt"):
+        assert (tmp_path / "out" / f).exists()

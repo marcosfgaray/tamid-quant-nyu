@@ -180,3 +180,101 @@ def run(obs, cfg, sizing="portfolio"):
         days_seen += 1
     tr = pd.DataFrame(trades, columns=TRADE_COLS) if trades else pd.DataFrame(columns=TRADE_COLS)
     return tr[TRADE_COLS].reset_index(drop=True), pd.DataFrame(daily)
+
+
+# ----------------------------------------------------------------------------
+# REPORTING
+# ----------------------------------------------------------------------------
+def day_ci(ret, n=4000, seed=11):
+    """Bootstrap over expiry days of the mean daily return: (2.5%, 97.5%)."""
+    v = np.asarray(ret, float)
+    if len(v) < 3:
+        return float("nan"), float("nan")
+    rng = np.random.default_rng(seed)
+    m = v[rng.integers(0, len(v), (n, len(v)))].mean(axis=1)
+    return tuple(float(x) for x in np.percentile(m, [2.5, 97.5]))
+
+
+def summarize(trades, daily, cfg, label):
+    if trades.empty:
+        return f"{label}: no trades"
+    live = daily[daily.day >= trades.day.min()].reset_index(drop=True)   # from the first traded day on
+    cum = live.ret.cumsum()
+    dd = (cum - np.maximum.accumulate(np.maximum(cum, 0.0))).min()
+    lo, hi = day_ci(live.ret)
+    half = len(live) // 2
+    pct = lambda x: f"{x * 100:+.3f}%"
+    lines = [f"{label}: {len(trades)} trades over {int((live.n_trades > 0).sum())} of {len(live)} days "
+             f"(cap {cfg.cap_frac:.1%} of ${cfg.bankroll:,.0f} = ${cfg.cap:,.2f})"]
+    for (side, H), g in trades.groupby(["side", "H"]):
+        lines.append(f"  {'buy YES ' if side == 1 else 'sell YES'} {H}h: n={len(g):>4}  contracts={int(g.q.sum()):>6}  "
+                     f"pnl=${g.pnl.sum():+,.2f}  hit={g.y.mean():.3f}")
+    lines += [
+        f"  mean daily return {pct(live.ret.mean())} [95% CI {pct(lo)}, {pct(hi)}], sd {live.ret.std() * 100:.3f}%",
+        f"  cumulative return {pct(cum.iloc[-1])}, max drawdown {dd * 100:.3f}%, worst day {pct(live.ret.min())}",
+        f"  max assumed worst case {-live.assumed_worst.min() / cfg.bankroll:.3%} of bankroll, "
+        f"max realized worst case {-live.realized_worst.min() / cfg.bankroll:.3%}, "
+        f"breaches (realized worst past cap) {int(live.breach.sum())}",
+        f"  mean capital deployed ${live.deployed.mean():,.2f} per day",
+        f"  first half mean daily {pct(live.ret.iloc[:half].mean())} | second half {pct(live.ret.iloc[half:].mean())}",
+    ]
+    return "\n".join(lines)
+
+
+def main(argv=None):
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    ap.add_argument("--data", default=str(DATA))
+    ap.add_argument("--bankroll", type=float, default=BANKROLL)
+    ap.add_argument("--cap", type=float, default=CAP_FRAC, help="worst-case loss cap as a fraction of bankroll")
+    ap.add_argument("--q-max", type=int, default=Q_MAX)
+    ap.add_argument("--min-edge", type=float, default=MIN_EDGE)
+    ap.add_argument("--slip", type=float, default=SLIP)
+    ap.add_argument("--n0", type=float, default=N0)
+    ap.add_argument("--warmup-days", type=int, default=WARMUP_DAYS)
+    ap.add_argument("--out-dir", default=str(OUT_DIR))
+    ap.add_argument("--no-plot", action="store_true")
+    a = ap.parse_args(argv)
+    cfg = Config(bankroll=a.bankroll, cap_frac=a.cap, q_max=a.q_max, min_edge=a.min_edge, slip=a.slip, n0=a.n0,
+                 warmup_days=a.warmup_days)
+    out = Path(a.out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    obs = load_obs(a.data)
+    res = {s: run(obs, cfg, s) for s in SIZINGS}
+    text = [f"Loaded {len(obs)} observations over {obs.day.nunique()} expiry days ({obs.day.min()} -> {obs.day.max()})", ""]
+    names = {"portfolio": "PORTFOLIO (worst-case cap)", "one": "B1 one contract per signal",
+             "per_trade": "B2 per-trade cap"}
+    for s in SIZINGS:
+        text += [summarize(*res[s], cfg, names[s]), ""]
+    text.append("Worst expiry day vs the cap:")
+    for s in SIZINGS:
+        d = res[s][1]
+        text.append(f"  {names[s]:<28} worst realized day {d.ret.min() * 100:+.3f}% of bankroll, "
+                    f"days with realized worst case past cap: {int((d.realized_worst < -cfg.cap - 1e-9).sum())}")
+    report = "\n".join(text)
+    print(report)
+
+    tr, dy = res["portfolio"]
+    tr.to_csv(out / "tail_trades.csv", index=False)
+    dy.to_csv(out / "tail_daily.csv", index=False)
+    (out / "tail_summary.txt").write_text(report + "\n")
+
+    if not a.no_plot:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(1, 2, figsize=(12, 4.2))
+        for s in SIZINGS:
+            d = res[s][1]
+            ax[0].plot(pd.to_datetime(d.day), d.ret.cumsum() * 100, label=names[s])
+        ax[0].set_title("Cumulative return, % of bankroll"); ax[0].legend()
+        ax[1].hist(dy.ret[dy.n_trades > 0] * 100, bins=30)
+        ax[1].set_title("Daily return on traded days, % (portfolio)")
+        fig.tight_layout(); fig.savefig(out / "tail_backtest.png", dpi=130)
+    print(f"Outputs in {out}")
+
+
+if __name__ == "__main__":
+    main()
