@@ -36,3 +36,85 @@ def test_best_side_sells_overpriced_low_tail():
     side, price, edge = best_side(0.05, 0.06, 0.005, Config())
     assert side == -1 and price == pytest.approx(0.03)
     assert edge == pytest.approx(0.03 - 0.005 - 0.07 * 0.03 * 0.97)
+
+
+# ---------------------------------------------------------------- simulator
+import datetime as dt
+
+from tail_strategy import run
+
+
+def _synth(days=40):
+    rows = []
+    for d in range(days):
+        day = dt.date(2026, 6, 1) + dt.timedelta(days=d)
+        for H in (6, 3):
+            for i in range(21):
+                if i <= 3:
+                    bid, ask, y = 0.935, 0.945, 1.0
+                elif i <= 16:
+                    bid, ask, y = 0.49, 0.51, 1.0 if i < 10 else 0.0
+                else:
+                    bid, ask, y = 0.055, 0.065, 0.0
+                rows.append(dict(ticker=f"D{d}-T{i}", expiry=f"{day} 21:00:00+00:00", day=day, H=H, y=y, S=65_000.0,
+                                 bid=bid, ask=ask, bid_f=bid, ask_f=ask, strike_type="greater",
+                                 floor=60_000.0 + 500 * i, mid=(bid + ask) / 2))
+    return pd.DataFrame(rows)
+
+
+def test_portfolio_never_breaches_without_slippage():
+    tr, dy = run(_synth(), Config())
+    assert len(tr) > 0
+    assert (dy.assumed_worst >= -30 - 1e-9).all() and not dy.breach.any()
+
+
+def test_no_trades_during_warmup():
+    tr, dy = run(_synth(days=25), Config())
+    assert tr.empty and (dy.pnl == 0).all() and len(dy) == 25
+
+
+def test_no_lookahead():
+    obs = _synth(days=40)
+    tr1, _ = run(obs, Config())
+    cut = sorted(obs.day.unique())[34]
+    obs2 = obs.copy()
+    later = obs2.day > cut
+    obs2.loc[later, "y"] = np.random.default_rng(1).permutation(obs2.loc[later, "y"].values)
+    tr2, _ = run(obs2, Config())
+    a = tr1[tr1.day <= cut].drop(columns=["y", "pnl"]).reset_index(drop=True)
+    b = tr2[tr2.day <= cut].drop(columns=["y", "pnl"]).reset_index(drop=True)
+    assert len(a) > 0
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_unusable_fill_is_unfilled():
+    obs = _synth()
+    obs.loc[obs.mid < 0.10, "bid_f"] = 0.0
+    obs.loc[obs.mid > 0.90, "ask_f"] = 1.0
+    tr, _ = run(obs, Config())
+    assert tr.empty
+
+
+def test_day_without_3h_round_still_settles():
+    obs = _synth()
+    last = obs.day.max()
+    obs = obs[~((obs.day == last) & (obs.H == 3))]
+    tr, dy = run(obs, Config())
+    assert last in set(dy.day)
+    assert dy.loc[dy.day == last, "pnl"].iloc[0] == pytest.approx(tr[tr.day == last].pnl.sum())
+    assert (tr[tr.day == last].H == 6).all() and (tr.day == last).any()
+
+
+def test_bad_fill_shows_in_realized_worst():
+    obs = _synth()
+    obs.loc[obs.mid < 0.10, "bid_f"] = 0.01   # sells fill 2.5c below the sized price
+    obs.loc[obs.mid > 0.90, "ask_f"] = 0.99   # buys fill 2.5c above the sized price
+    _, dy = run(obs, Config())
+    traded = dy[dy.n_trades > 0]
+    assert len(traded) > 0 and (traded.realized_worst < traded.assumed_worst).all()
+    assert (dy.breach == (dy.realized_worst < -30 - 1e-9)).all()
+
+
+def test_per_trade_baseline_can_exceed_cap():
+    _, dy = run(_synth(), Config(), sizing="per_trade")
+    assert (dy.realized_worst < -30).any()
