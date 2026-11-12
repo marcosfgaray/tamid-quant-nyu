@@ -49,6 +49,19 @@ class Config:
     min_cell_n: int = MIN_CELL_N
     warmup_days: int = WARMUP_DAYS
     fee_rate: float = FEE_RATE
+    # model-variant options (spec: docs/superpowers/specs/2026-11-11-btc-tail-variants-design.md); every default
+    # reproduces the base strategy
+    tail_lo: float = TAIL_LO           # trade only mid < tail_lo or > 1 - tail_lo (the estimator still trains on 10c)
+    hours: tuple = HOURS               # decision rounds
+    z_min: float = 0.0                 # min |d2| implied by dist_col (strike distance in forecast sd)
+    agree_margin: float = None         # if set, model_col's net edge on the chosen side must be >= this
+    prior: str = "market"              # "market": shrink toward the bin's mean mid; "model": toward model_col
+    quantile: float = None             # if set, size on this pessimistic quantile of the Beta posterior of f
+    estimator: str = "cells"           # "cells" (per-bin rates) or "logit" (walk-forward logistic regression)
+    half_life: float = None            # if set, cell outcomes decay with this half-life in expiry days
+    move_skip: float = None            # if set, skip when the fill-hour mid moved more than this toward the money
+    model_col: str = "p_ewma_fhs"
+    dist_col: str = "p_ewma_normal"
 
     @property
     def cap(self) -> float:
@@ -71,29 +84,108 @@ def tail_candidates(obs):
 
 
 class CellStats:
-    """Per-(horizon, price bin) running counts of prior observations: n, sum of outcomes, sum of mids."""
+    """Per-(horizon, price bin) running counts of prior observations: raw n, and weighted count, outcomes and mids.
 
-    def __init__(self, n0, bins):
+    Without a half-life the weights are all 1. With one, each update() call (one expiry day) first decays the
+    weighted sums by 2^(-1/half_life). Eligibility always uses the raw count.
+    """
+
+    def __init__(self, n0, bins, half_life=None):
         self.n0 = n0
         self.bins = np.asarray(bins, float)
+        self.decay = None if half_life is None else 2.0 ** (-1.0 / half_life)
         self.cells = {}
 
     def _bin(self, mid):
         return int(np.searchsorted(self.bins, mid, side="right") - 1)
 
     def update(self, df):
+        if self.decay is not None:
+            for c in self.cells.values():
+                c[1] *= self.decay
+                c[2] *= self.decay
+                c[3] *= self.decay
         for H, mid, y in zip(df.H, df.mid, df.y):
-            c = self.cells.setdefault((int(H), self._bin(mid)), [0, 0.0, 0.0])
+            c = self.cells.setdefault((int(H), self._bin(mid)), [0, 0.0, 0.0, 0.0])
             c[0] += 1
-            c[1] += y
-            c[2] += mid
+            c[1] += 1.0
+            c[2] += y
+            c[3] += mid
 
-    def estimate(self, H, mid):
-        n, sy, sm = self.cells.get((int(H), self._bin(mid)), (0, 0.0, 0.0))
+    def _posterior(self, H, mid, prior):
+        """(raw n, weighted n, Beta alpha, Beta beta) of the shrunk YES rate."""
+        n, w, sy, sm = self.cells.get((int(H), self._bin(mid)), (0, 0.0, 0.0, 0.0))
+        if n == 0:
+            return n, 0.0, float("nan"), float("nan")
+        m = sm / w if prior is None else prior
+        return n, w, sy + self.n0 * m, (w - sy) + self.n0 * (1 - m)
+
+    def estimate(self, H, mid, prior=None):
+        """Shrunk YES rate and raw count. prior=None shrinks toward the bin's mean mid, else toward `prior`."""
+        n, w, a, _ = self._posterior(H, mid, prior)
         if n == 0:
             return float("nan"), 0
-        m = sm / n
-        return (sy + self.n0 * m) / (n + self.n0), n
+        return a / (w + self.n0), n             # = (sum y + n0*m) / (n + n0), same arithmetic as the base
+
+    def quantile(self, H, mid, q, side, prior=None):
+        """Pessimistic Beta-posterior quantile of the YES rate for `side`: upper for a seller, lower for a buyer."""
+        from scipy.stats import beta
+        n, _, a, b = self._posterior(H, mid, prior)
+        if n == 0:
+            return float("nan")
+        return float(beta.ppf(q if side == -1 else 1 - q, a, b))
+
+
+class LogitModel:
+    """Walk-forward logistic regression of y on [1, logit(mid), logit(model p), 1[H == 3]], L2-penalized.
+
+    update() stores one expiry day's training rows; refit happens in maybe_fit() at most every `refit_days` days.
+    """
+
+    def __init__(self, model_col, refit_days=7, l2=1.0, min_rows=200):
+        self.model_col, self.refit_days, self.l2, self.min_rows = model_col, refit_days, l2, min_rows
+        self.X, self.y = [], []
+        self.w = None
+        self.last_fit = None
+
+    @staticmethod
+    def _logit(p):
+        p = np.clip(np.asarray(p, float), 0.001, 0.999)
+        return np.log(p / (1 - p))
+
+    def _features(self, mid, pm, H):
+        mid, pm, H = np.atleast_1d(mid), np.atleast_1d(pm), np.atleast_1d(H)
+        return np.column_stack([np.ones(len(mid)), self._logit(mid), self._logit(pm), (H == 3).astype(float)])
+
+    def update(self, df):
+        if len(df):
+            self.X.append(self._features(df.mid.values, df[self.model_col].values, df.H.values))
+            self.y.append(df.y.values.astype(float))
+
+    def maybe_fit(self, day_index):
+        if self.last_fit is not None and day_index - self.last_fit < self.refit_days:
+            return
+        if not self.X or sum(len(v) for v in self.y) < self.min_rows:
+            return
+        from scipy.optimize import minimize
+        X, y = np.vstack(self.X), np.concatenate(self.y)
+        pen = np.array([0.0, 1.0, 1.0, 1.0]) * self.l2
+
+        def loss(w):
+            z = X @ w
+            ll = np.logaddexp(0, z) - y * z
+            p = 1 / (1 + np.exp(-z))
+            return ll.sum() + 0.5 * (pen * w * w).sum(), X.T @ (p - y) + pen * w
+
+        w0 = self.w if self.w is not None else np.zeros(X.shape[1])
+        self.w = minimize(loss, w0, jac=True, method="L-BFGS-B").x
+        self.last_fit = day_index
+
+    def predict(self, mid, pm, H):
+        if self.w is None:
+            return float("nan")
+        z = float((self._features(mid, pm, H) @ self.w)[0])
+        return float(np.clip(1 / (1 + np.exp(-z)), 0.001, 0.999))
 
 
 def best_side(bid, ask, f, cfg):
@@ -129,26 +221,54 @@ def run(obs, cfg, sizing="portfolio"):
     """Walk forward over expiry days. Returns (trades, daily); see the plan's Task 4 for the column meanings."""
     if sizing not in SIZINGS:
         raise ValueError(f"sizing must be one of {SIZINGS}")
-    cs = CellStats(cfg.n0, BINS)
+    cs = CellStats(cfg.n0, BINS, half_life=cfg.half_life)
+    lm = LogitModel(cfg.model_col) if cfg.estimator == "logit" else None
     trades, daily = [], []
     days_seen = 0
     for day, g in obs.groupby("day", sort=True):
         held = []
         assumed = 0.0              # sizer's view at the last round that placed positions
         tails = tail_candidates(g)
+        if lm is not None:
+            lm.maybe_fit(days_seen)
         if days_seen >= cfg.warmup_days:
-            for H in HOURS:
+            for H in cfg.hours:
                 cands = []
                 for r in tails[tails.H == H].itertuples(index=False):
+                    if not (r.mid < cfg.tail_lo or r.mid > 1 - cfg.tail_lo):
+                        continue
                     f, n = cs.estimate(H, r.mid)
                     if n < cfg.min_cell_n:
                         continue
+                    pm = getattr(r, cfg.model_col) if (cfg.prior == "model" or cfg.agree_margin is not None
+                                                       or lm is not None) else None
+                    if cfg.z_min > 0:
+                        from scipy.stats import norm
+                        pd2 = min(max(float(getattr(r, cfg.dist_col)), 1e-9), 1 - 1e-9)
+                        if abs(norm.ppf(pd2)) < cfg.z_min:
+                            continue
+                    prior = pm if cfg.prior == "model" else None
+                    if prior is not None:
+                        f, _ = cs.estimate(H, r.mid, prior=prior)
+                    if lm is not None:
+                        f = lm.predict(r.mid, pm, H)
+                    if not np.isfinite(f):
+                        continue
                     side, price, edge = best_side(r.bid, r.ask, f, cfg)
+                    if cfg.quantile is not None:
+                        f = cs.quantile(H, r.mid, cfg.quantile, side, prior=prior)
+                        edge = side * (f - price) - fee(price, cfg.fee_rate)
+                    if cfg.agree_margin is not None and side * (pm - price) - fee(price, cfg.fee_rate) < cfg.agree_margin:
+                        continue
                     fill = r.ask_f if side == 1 else r.bid_f
                     # a leg whose fill-hour quote is unusable is never placed; leaving it out BEFORE sizing keeps
                     # the LP from counting on a hedge that cannot exist
                     if (not np.isfinite(fill)) or (fill >= 1.0 if side == 1 else fill <= 0.0):
                         continue
+                    if cfg.move_skip is not None:
+                        moved = ((r.bid_f + r.ask_f) / 2 - r.mid) * (-side)   # > 0: toward the money for this side
+                        if moved > cfg.move_skip:
+                            continue
                     if edge >= cfg.min_edge:
                         cands.append(dict(day=day, ticker=r.ticker, H=H, side=side, size_price=price, edge=edge, f=f,
                                           y=r.y, floor=r.floor, bid_f=r.bid_f, ask_f=r.ask_f))
@@ -190,6 +310,8 @@ def run(obs, cfg, sizing="portfolio"):
                                              for p in held)),
                           n_trades=len(held)))
         cs.update(tails)
+        if lm is not None:
+            lm.update(tails)
         days_seen += 1
     tr = pd.DataFrame(trades, columns=TRADE_COLS) if trades else pd.DataFrame(columns=TRADE_COLS)
     return tr[TRADE_COLS].reset_index(drop=True), pd.DataFrame(daily, columns=DAILY_COLS)
