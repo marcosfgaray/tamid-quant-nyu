@@ -32,3 +32,38 @@ def worst_case(P, q, base=None):
     if base is not None:
         tot = tot + np.asarray(base, float)
     return float(tot.min())
+
+
+def size_portfolio(edges, P, base, cap, q_max):
+    """Whole contracts per candidate that maximize expected edge while every scenario of base + P @ q stays >= -cap.
+
+    Returns zeros when there are no candidates, held positions already breach the cap, or the LP fails.
+    """
+    from scipy.optimize import linprog
+
+    edges = np.asarray(edges, float)
+    n = len(edges)
+    zeros = np.zeros(n, dtype=int)
+    if n == 0:
+        return zeros
+    P = np.asarray(P, float)
+    base = np.asarray(base, float)
+    if worst_case(P, zeros, base) < -cap - 1e-9:
+        return zeros
+    res = linprog(c=-edges, A_ub=-P, b_ub=base + cap, bounds=[(0, q_max)] * n, method="highs")
+    if res.status != 0:
+        return zeros
+    x = np.clip(res.x, 0, q_max)
+    scale = 1.0
+    while True:
+        q = np.floor(x * scale + 1e-9).astype(int)
+        if worst_case(P, q, base) >= -cap - 1e-9 or not q.any():
+            return q
+        scale *= 0.95
+
+
+def size_per_trade(P, cap, q_max):
+    """Baseline: size each candidate so its own worst case is within cap, ignoring every other position."""
+    P = np.asarray(P, float)
+    loss = np.maximum(-P.min(axis=0), 1e-12)
+    return np.minimum(q_max, np.floor(cap / loss)).astype(int)

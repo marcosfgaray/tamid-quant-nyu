@@ -1,7 +1,14 @@
 import numpy as np
 import pytest
 
-from tail_sizer import fee, payoff_matrix, worst_case
+from tail_sizer import fee, payoff_matrix, size_per_trade, size_portfolio, worst_case
+
+CAP = 30.0
+
+
+def _book(strikes, sides, prices):
+    grid = np.unique(strikes)
+    return payoff_matrix(grid, np.asarray(strikes, float), np.asarray(sides), np.asarray(prices, float))
 
 
 def test_fee_values():
@@ -23,3 +30,41 @@ def test_worst_case_with_base():
     P = np.array([[1.0], [-2.0]])
     assert worst_case(P, np.array([3.0])) == pytest.approx(-6.0)
     assert worst_case(P, np.array([3.0]), base=np.array([0.0, 4.0])) == pytest.approx(-2.0)
+
+
+def test_random_books_never_exceed_cap():
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        n = rng.integers(1, 8)
+        strikes = rng.choice(np.arange(60_000, 70_000, 250), n)
+        sides = rng.choice([-1, 1], n)
+        prices = np.where(sides == -1, rng.uniform(0.01, 0.10, n), rng.uniform(0.90, 0.99, n))
+        P = _book(strikes, sides, prices)
+        q = size_portfolio(rng.uniform(0.005, 0.03, n), P, np.zeros(P.shape[0]), CAP, 50)
+        assert q.dtype.kind == "i" and (q >= 0).all() and (q <= 50).all()
+        assert worst_case(P, q) >= -CAP - 1e-9
+
+
+def test_nested_shorts_share_one_budget():
+    P1 = _book([66_000], [-1], [0.05])
+    alone = size_portfolio(np.array([0.01]), P1, np.zeros(2), CAP, 100)
+    P2 = _book([65_000, 66_000], [-1, -1], [0.05, 0.05])
+    pair = size_portfolio(np.array([0.01, 0.01]), P2, np.zeros(3), CAP, 100)
+    assert alone[0] == 31 and pair.sum() <= alone[0]
+
+
+def test_two_sided_book_gets_more_room():
+    P = _book([66_000, 60_000], [-1, 1], [0.05, 0.95])
+    q = size_portfolio(np.array([0.01, 0.01]), P, np.zeros(3), CAP, 100)
+    assert q.sum() > 31 and worst_case(P, q) >= -CAP - 1e-9
+
+
+def test_base_already_breaching_returns_zeros():
+    P = _book([66_000], [-1], [0.05])
+    assert size_portfolio(np.array([0.01]), P, np.array([0.0, -31.0]), CAP, 50).sum() == 0
+
+
+def test_per_trade_ignores_nesting():
+    P = _book([65_000, 66_000], [-1, -1], [0.05, 0.05])
+    q = size_per_trade(P, CAP, 100)
+    assert list(q) == [31, 31] and worst_case(P, q) < -CAP
