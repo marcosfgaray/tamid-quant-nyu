@@ -187,3 +187,51 @@ def test_realized_worst_uses_rounded_fees_and_stays_within_cap():
         w = _exact_realized_worst(t)
         assert dy.loc[dy.day == day, "realized_worst"].iloc[0] == pytest.approx(w)
         assert w >= -30 - 1e-9
+
+
+# ---------------------------------------------------------------- remaining minor fixes
+from tail_strategy import load_obs
+
+
+def test_load_obs_drops_rows_without_outcome(tmp_path):
+    obs = _synth()
+    obs.loc[obs.index[0], "y"] = np.nan
+    p = tmp_path / "obs.csv"
+    obs.to_csv(p, index=False)
+    o = load_obs(p)
+    assert o.y.notna().all() and len(o) == len(obs) - 1
+
+
+def test_main_handles_input_without_decision_hours(tmp_path):
+    p = tmp_path / "obs.csv"
+    _synth().assign(H=12).to_csv(p, index=False)
+    main(["--data", str(p), "--out-dir", str(tmp_path / "out"), "--no-plot"])
+    assert "no trades" in (tmp_path / "out" / "tail_summary.txt").read_text()
+
+
+def test_summary_uses_given_start_for_the_window():
+    tr, dy = run(_synth(), Config())
+    start = dy.day.iloc[20]
+    s = summarize(tr, dy, Config(), "portfolio", start=start)
+    assert f"of {int((dy.day >= start).sum())} days" in s
+
+
+def test_worst_day_is_worst_traded_day():
+    tr, dy = run(_synth(), Config())
+    traded = dy[dy.n_trades > 0]
+    s = summarize(tr, dy, Config(), "portfolio")
+    assert f"worst traded day {traded.ret.min() * 100:+.3f}%" in s
+
+
+def test_deployed_includes_fees():
+    tr, dy = run(_synth(), Config())
+    collateral = np.where(tr.side == 1, tr.fill, 1 - tr.fill) * tr.q + tr.fee
+    expected = pd.Series(collateral.values, index=tr.day).groupby(level=0).sum()
+    got = dy.set_index("day").deployed
+    assert got.loc[expected.index].values == pytest.approx(expected.values)
+
+
+def test_summary_labels_split_and_reports_deployed_ci():
+    tr, dy = run(_synth(), Config())
+    s = summarize(tr, dy, Config(), "portfolio")
+    assert "(not an out-of-sample test)" in s and "per day [95% CI" in s

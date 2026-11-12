@@ -63,13 +63,28 @@ def size_portfolio(edges, P, base, cap, q_max):
     res = linprog(c=-edges, A_ub=-P, b_ub=base + cap, bounds=[(0, q_max)] * n, method="highs")
     if res.status != 0:
         return zeros
-    x = np.clip(res.x, 0, q_max)
-    scale = 1.0
-    while True:
-        q = np.floor(x * scale + 1e-9).astype(int)
-        if worst_case(P, q, base) >= -cap - 1e-9 or not q.any():
-            return q
-        scale *= 0.95
+    q = np.floor(np.clip(res.x, 0, q_max) + 1e-9).astype(int)
+    ok = lambda v: worst_case(P, v, base) >= -cap - 1e-9
+    # 1) flooring can break the cap when it trims a hedge leg harder than the leg it hedges: remove one contract at a
+    #    time from the position that loses most in the currently worst scenario until the book fits
+    while not ok(q):
+        row = int(np.argmin(base + P @ q))
+        losers = np.where((q > 0) & (P[row] < 0))[0]
+        i = losers[np.argmin(P[row, losers])]
+        q[i] -= 1
+    # 2) give back what rounding left on the table: add single contracts, best edge first, while the book still fits
+    order = np.argsort(-edges)
+    added = True
+    while added:
+        added = False
+        for i in order:
+            if q[i] < q_max:
+                q[i] += 1
+                if ok(q):
+                    added = True
+                    break
+                q[i] -= 1
+    return q
 
 
 def size_per_trade(P, cap, q_max):

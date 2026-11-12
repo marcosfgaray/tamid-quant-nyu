@@ -60,6 +60,7 @@ def load_obs(path):
     o = o[o.H.isin(HOURS) & (o.strike_type == "greater")].copy()
     o["day"] = pd.to_datetime(o.day).dt.date
     o["mid"] = (o.bid + o.ask) / 2
+    o = o[o.y.notna()]           # an unsettled row would poison its estimator cell (NaN outcome) for the whole run
     return o.reset_index(drop=True)
 
 
@@ -106,6 +107,7 @@ def best_side(bid, ask, f, cfg):
 
 SIZINGS = ("portfolio", "one", "per_trade")
 TRADE_COLS = ["day", "ticker", "H", "side", "q", "size_price", "fill", "fee", "edge", "f", "y", "pnl"]
+DAILY_COLS = ["day", "pnl", "ret", "assumed_worst", "realized_worst", "breach", "deployed", "n_trades"]
 
 
 def _book_payoffs(grid, pos, price_col, fee_rate):
@@ -184,19 +186,20 @@ def run(obs, cfg, sizing="portfolio"):
         pnl = float(sum(p["pnl"] for p in held))
         daily.append(dict(day=day, pnl=pnl, ret=pnl / cfg.bankroll, assumed_worst=assumed, realized_worst=realized,
                           breach=realized < -cfg.cap - 1e-9,
-                          deployed=float(sum(p["q"] * (p["fill"] if p["side"] == 1 else 1 - p["fill"]) for p in held)),
+                          deployed=float(sum(p["q"] * (p["fill"] if p["side"] == 1 else 1 - p["fill"]) + p["fee"]
+                                             for p in held)),
                           n_trades=len(held)))
         cs.update(tails)
         days_seen += 1
     tr = pd.DataFrame(trades, columns=TRADE_COLS) if trades else pd.DataFrame(columns=TRADE_COLS)
-    return tr[TRADE_COLS].reset_index(drop=True), pd.DataFrame(daily)
+    return tr[TRADE_COLS].reset_index(drop=True), pd.DataFrame(daily, columns=DAILY_COLS)
 
 
 # ----------------------------------------------------------------------------
 # REPORTING
 # ----------------------------------------------------------------------------
 def day_ci(ret, n=4000, seed=11):
-    """Bootstrap over expiry days of the mean daily return: (2.5%, 97.5%)."""
+    """Bootstrap over expiry days of the mean of a daily series: (2.5%, 97.5%)."""
     v = np.asarray(ret, float)
     if len(v) < 3:
         return float("nan"), float("nan")
@@ -205,13 +208,17 @@ def day_ci(ret, n=4000, seed=11):
     return tuple(float(x) for x in np.percentile(m, [2.5, 97.5]))
 
 
-def summarize(trades, daily, cfg, label):
+def summarize(trades, daily, cfg, label, start=None):
+    """Report from `start` (default: this run's first traded day). Pass one common start to compare runs."""
     if trades.empty:
         return f"{label}: no trades"
-    live = daily[daily.day >= trades.day.min()].reset_index(drop=True)   # from the first traded day on
+    start = trades.day.min() if start is None else start
+    live = daily[daily.day >= start].reset_index(drop=True)
     cum = live.ret.cumsum()
     dd = (cum - np.maximum.accumulate(np.maximum(cum, 0.0))).min()
     lo, hi = day_ci(live.ret)
+    dlo, dhi = day_ci(live.deployed)
+    worst_traded = live.ret[live.n_trades > 0].min()
     half = len(live) // 2
     pct = lambda x: f"{x * 100:+.3f}%"
     lines = [f"{label}: {len(trades)} trades over {int((live.n_trades > 0).sum())} of {len(live)} days "
@@ -221,14 +228,15 @@ def summarize(trades, daily, cfg, label):
                      f"pnl=${g.pnl.sum():+,.2f}  hit={g.y.mean():.3f}")
     lines += [
         f"  mean daily return {pct(live.ret.mean())} [95% CI {pct(lo)}, {pct(hi)}], sd {live.ret.std() * 100:.3f}%",
-        f"  cumulative return {pct(cum.iloc[-1])}, max drawdown {dd * 100:.3f}%, worst day {pct(live.ret.min())}",
+        f"  cumulative return {pct(cum.iloc[-1])}, max drawdown {dd * 100:.3f}%, worst traded day {pct(worst_traded)}",
         f"  max assumed worst case {-live.assumed_worst.min() / cfg.bankroll:.3%} of bankroll, "
         f"max realized worst case {-live.realized_worst.min() / cfg.bankroll:.3%}, "
         f"breaches (realized worst past cap) {int(live.breach.sum())}",
-        f"  mean capital deployed ${live.deployed.mean():,.2f} per day",
+        f"  mean capital deployed incl. fees ${live.deployed.mean():,.2f} per day [95% CI ${dlo:,.2f}, ${dhi:,.2f}]",
         f"  {int(((trades.size_price <= 0.01 + 1e-9) | (trades.size_price >= 0.99 - 1e-9)).sum())} of {len(trades)} "
         f"trades sized at the 1c/99c clip (slippage buffer inactive there)",
-        f"  first half mean daily {pct(live.ret.iloc[:half].mean())} | second half {pct(live.ret.iloc[half:].mean())}",
+        f"  first half mean daily {pct(live.ret.iloc[:half].mean())} | second half {pct(live.ret.iloc[half:].mean())} "
+        f"(not an out-of-sample test)",
     ]
     return "\n".join(lines)
 
@@ -255,15 +263,23 @@ def main(argv=None):
 
     obs = load_obs(a.data)
     res = {s: run(obs, cfg, s) for s in SIZINGS}
-    text = [f"Loaded {len(obs)} observations over {obs.day.nunique()} expiry days ({obs.day.min()} -> {obs.day.max()})", ""]
+    text = [f"Loaded {len(obs)} observations over {obs.day.nunique()} expiry days "
+            f"({obs.day.min()} -> {obs.day.max()})" if len(obs) else "Loaded 0 observations at the 6h/3h horizons", ""]
     names = {"portfolio": "PORTFOLIO (worst-case cap)", "one": "B1 one contract per signal",
              "per_trade": "B2 per-trade cap"}
+    firsts = [res[s][0].day.min() for s in SIZINGS if not res[s][0].empty]
+    start = min(firsts) if firsts else None        # one common window so the three modes are comparable
+    if start is not None:
+        text += [f"All modes reported from {start} (first day any mode traded)", ""]
     for s in SIZINGS:
-        text += [summarize(*res[s], cfg, names[s]), ""]
+        text += [summarize(*res[s], cfg, names[s], start=start), ""]
     text.append("Worst expiry day vs the cap:")
     for s in SIZINGS:
         d = res[s][1]
-        text.append(f"  {names[s]:<28} worst realized day {d.ret.min() * 100:+.3f}% of bankroll, "
+        if d.empty or not (d.n_trades > 0).any():
+            text.append(f"  {names[s]:<28} no trades")
+            continue
+        text.append(f"  {names[s]:<28} worst traded day {d.ret[d.n_trades > 0].min() * 100:+.3f}% of bankroll, "
                     f"days with realized worst case past cap: {int((d.realized_worst < -cfg.cap - 1e-9).sum())}")
     report = "\n".join(text)
     print(report)
@@ -273,7 +289,7 @@ def main(argv=None):
     dy.to_csv(out / "tail_daily.csv", index=False)
     (out / "tail_summary.txt").write_text(report + "\n")
 
-    if not a.no_plot:
+    if not a.no_plot and not dy.empty:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt

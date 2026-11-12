@@ -76,3 +76,21 @@ def test_order_fee_rounds_up_per_order():
     assert order_fee(30, 0.01) == pytest.approx(0.03)     # 0.02079 rounds up to 3c
     assert order_fee(100, 0.5) == pytest.approx(1.75)     # exact cents stay put despite float noise
     assert order_fee(0, 0.5) == 0.0
+
+
+def test_rounding_leaves_no_free_contract():
+    """After rounding, no single extra contract on any candidate would still fit under the cap."""
+    rng = np.random.default_rng(5)
+    for _ in range(150):
+        n = rng.integers(2, 7)
+        strikes = rng.choice(np.arange(60_000, 70_000, 250), n)
+        sides = rng.choice([-1, 1], n)
+        prices = np.where(sides == -1, rng.uniform(0.01, 0.10, n), rng.uniform(0.90, 0.99, n))
+        P = _book(strikes, sides, prices)
+        q = size_portfolio(rng.uniform(0.005, 0.03, n), P, np.zeros(P.shape[0]), CAP, 50)
+        assert worst_case(P, q) >= -CAP - 1e-9
+        for i in range(n):
+            if q[i] < 50:
+                bumped = q.copy()
+                bumped[i] += 1
+                assert worst_case(P, bumped) < -CAP - 1e-9
