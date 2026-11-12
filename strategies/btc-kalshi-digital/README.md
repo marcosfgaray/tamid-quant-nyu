@@ -34,3 +34,18 @@ pip install -r ../../requirements-dev.txt && python -m pytest tests -q
 - `tail_sizer.py` - settlement payoff matrix, worst-case check, LP sizer, per-trade baseline
 - `tail_strategy.py` - tail filter, walk-forward edge, simulator, report and CLI
 - `output/btc_tail_results/` - `tail_trades.csv`, `tail_daily.csv`, `tail_summary.txt`, `tail_backtest.png`
+  (120 expiries, Jun - Oct 2026)
+
+### Long history (base version)
+815 expiries, Jul 2024 - Nov 2026. This is the base version that later variants are compared against.
+```
+python btc_pm_data_pull.py --days 860                  # raw data to output/btc_pm/ (git-ignored, ~1-2h)
+python btc_digital_model_backtest.py --data-dir output/btc_pm --out-dir output/btc_pm_results_long --no-plot
+python tail_strategy.py --data output/btc_pm_results_long/btc_observations.csv --out-dir output/btc_tail_results_long
+```
+Portfolio sizing over 481 live days (237 traded):
+- **Return:** +5.3%, with a mean daily return of +0.011% [95% CI -0.023%, +0.041%]. That is not significantly above zero.
+- **Losses:** 7 tail days lost about 3% each. Max drawdown -5.5%.
+- **Cap:** 24 days ended past the 3% cap (worst 3.14%), because fills come an hour after sizing.
+
+Before 2026 the 4-5c spreads ate the edge, and the strategy traded only twice.
