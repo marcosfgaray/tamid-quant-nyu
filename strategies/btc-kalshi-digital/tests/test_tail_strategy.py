@@ -141,3 +141,23 @@ def test_main_writes_outputs(tmp_path):
     main(["--data", str(p), "--out-dir", str(tmp_path / "out"), "--no-plot"])
     for f in ("tail_trades.csv", "tail_daily.csv", "tail_summary.txt"):
         assert (tmp_path / "out" / f).exists()
+
+
+# ---------------------------------------------------------------- final-review fixes
+def test_unfillable_hedge_leg_does_not_break_cap():
+    obs = _synth()
+    last = obs.day.max()
+    obs.loc[(obs.day == last) & (obs.mid > 0.90), "ask_f"] = 1.0   # buys cannot fill, sells can
+    tr, dy = run(obs, Config())
+    d = dy[dy.day == last].iloc[0]
+    assert (tr[tr.day == last].side == -1).all() and d.n_trades > 0
+    assert d.assumed_worst >= -30 - 1e-9 and not d.breach
+
+
+def test_summary_reports_clipped_sizing_prices():
+    tr, dy = run(_synth(), Config())
+    s = summarize(tr, dy, Config(), "portfolio")
+    assert f"0 of {len(tr)} trades sized at the 1c/99c clip" in s
+    tr2 = tr.copy()
+    tr2.loc[tr2.index[:3], "size_price"] = 0.01
+    assert f"3 of {len(tr)} trades sized at the 1c/99c clip" in summarize(tr2, dy, Config(), "portfolio")

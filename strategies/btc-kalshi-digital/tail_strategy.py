@@ -139,6 +139,11 @@ def run(obs, cfg, sizing="portfolio"):
                     if n < cfg.min_cell_n:
                         continue
                     side, price, edge = best_side(r.bid, r.ask, f, cfg)
+                    fill = r.ask_f if side == 1 else r.bid_f
+                    # a leg whose fill-hour quote is unusable is never placed; leaving it out BEFORE sizing keeps
+                    # the LP from counting on a hedge that cannot exist
+                    if (not np.isfinite(fill)) or (fill >= 1.0 if side == 1 else fill <= 0.0):
+                        continue
                     if edge >= cfg.min_edge:
                         cands.append(dict(day=day, ticker=r.ticker, H=H, side=side, size_price=price, edge=edge, f=f,
                                           y=r.y, floor=r.floor, bid_f=r.bid_f, ask_f=r.ask_f))
@@ -156,8 +161,7 @@ def run(obs, cfg, sizing="portfolio"):
                 placed = []
                 for c, qi in zip(cands, q):
                     fill = c["ask_f"] if c["side"] == 1 else c["bid_f"]
-                    unusable = (not np.isfinite(fill)) or (fill >= 1.0 if c["side"] == 1 else fill <= 0.0)
-                    if qi <= 0 or unusable:
+                    if qi <= 0:
                         continue
                     fe = fee(fill, cfg.fee_rate)
                     placed.append(dict(c, q=int(qi), fill=float(fill), fee=fe,
@@ -216,6 +220,8 @@ def summarize(trades, daily, cfg, label):
         f"max realized worst case {-live.realized_worst.min() / cfg.bankroll:.3%}, "
         f"breaches (realized worst past cap) {int(live.breach.sum())}",
         f"  mean capital deployed ${live.deployed.mean():,.2f} per day",
+        f"  {int(((trades.size_price <= 0.01 + 1e-9) | (trades.size_price >= 0.99 - 1e-9)).sum())} of {len(trades)} "
+        f"trades sized at the 1c/99c clip (slippage buffer inactive there)",
         f"  first half mean daily {pct(live.ret.iloc[:half].mean())} | second half {pct(live.ret.iloc[half:].mean())}",
     ]
     return "\n".join(lines)

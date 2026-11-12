@@ -1,15 +1,16 @@
 Loaded 6242 observations over 120 expiry days (2026-06-17 -> 2026-10-14)
 
-PORTFOLIO (worst-case cap): 58 trades over 38 of 47 days (cap 3.0% of $1,000 = $30.00)
-  sell YES 3h: n=  10  contracts=   302  pnl=$+4.27  hit=0.000
-  sell YES 6h: n=  20  contracts=   600  pnl=$+5.86  hit=0.000
-  buy YES  3h: n=  10  contracts=   272  pnl=$+2.81  hit=1.000
-  buy YES  6h: n=  18  contracts=   540  pnl=$+8.39  hit=1.000
-  mean daily return +0.045% [95% CI +0.033%, +0.062%], sd 0.051%
-  cumulative return +2.133%, max drawdown 0.000%, worst day +0.000%
+PORTFOLIO (worst-case cap): 73 trades over 43 of 50 days (cap 3.0% of $1,000 = $30.00)
+  sell YES 3h: n=  12  contracts=   333  pnl=$+3.43  hit=0.000
+  sell YES 6h: n=  25  contracts=   750  pnl=$+7.54  hit=0.000
+  buy YES  3h: n=  14  contracts=   392  pnl=$+3.93  hit=1.000
+  buy YES  6h: n=  22  contracts=   660  pnl=$+9.51  hit=1.000
+  mean daily return +0.049% [95% CI +0.039%, +0.062%], sd 0.042%
+  cumulative return +2.441%, max drawdown 0.000%, worst day +0.000%
   max assumed worst case 2.972% of bankroll, max realized worst case 2.972%, breaches (realized worst past cap) 0
-  mean capital deployed $35.98 per day
-  first half mean daily +0.030% | second half +0.060%
+  mean capital deployed $42.18 per day
+  73 of 73 trades sized at the 1c/99c clip (slippage buffer inactive there)
+  first half mean daily +0.036% | second half +0.062%
 
 B1 one contract per signal: 203 trades over 43 of 50 days (cap 3.0% of $1,000 = $30.00)
   sell YES 3h: n=  53  contracts=    53  pnl=$+0.65  hit=0.000
@@ -20,6 +21,7 @@ B1 one contract per signal: 203 trades over 43 of 50 days (cap 3.0% of $1,000 = 
   cumulative return +0.255%, max drawdown 0.000%, worst day +0.000%
   max assumed worst case 0.985% of bankroll, max realized worst case 0.984%, breaches (realized worst past cap) 0
   mean capital deployed $4.01 per day
+  203 of 203 trades sized at the 1c/99c clip (slippage buffer inactive there)
   first half mean daily +0.002% | second half +0.008%
 
 B2 per-trade cap: 203 trades over 43 of 50 days (cap 3.0% of $1,000 = $30.00)
@@ -31,6 +33,7 @@ B2 per-trade cap: 203 trades over 43 of 50 days (cap 3.0% of $1,000 = $30.00)
   cumulative return +7.664%, max drawdown 0.000%, worst day +0.000%
   max assumed worst case 29.553% of bankroll, max realized worst case 29.525%, breaches (realized worst past cap) 30
   mean capital deployed $120.16 per day
+  203 of 203 trades sized at the 1c/99c clip (slippage buffer inactive there)
   first half mean daily +0.057% | second half +0.250%
 
 Worst expiry day vs the cap:
