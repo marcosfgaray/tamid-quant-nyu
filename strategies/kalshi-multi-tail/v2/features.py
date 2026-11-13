@@ -35,3 +35,51 @@ def realized_sigma(series, t, n_changes=20, min_changes=10):
     if len(v) - 1 < min_changes:
         return np.nan
     return float(np.std(np.diff(np.log(v)), ddof=1))
+
+
+def pav_decreasing(p):
+    """Pool-adjacent-violators fit of a non-increasing sequence (unit weights)."""
+    blocks = []  # [sum, count]
+    for v in np.asarray(p, dtype=float):
+        blocks.append([v, 1])
+        while len(blocks) > 1 and blocks[-2][0] / blocks[-2][1] < blocks[-1][0] / blocks[-1][1]:
+            s, n = blocks.pop()
+            blocks[-1][0] += s
+            blocks[-1][1] += n
+    return np.concatenate([np.full(n, s / n) for s, n in blocks]) if blocks else np.array([])
+
+
+def ladder_implied(strikes, bid, ask, max_spread=0.10):
+    """Implied median M and sigma from a ladder of P(settle > K) quotes; (NaN, NaN) if unusable.
+
+    Only two-sided quotes with ask - bid <= max_spread are used. Mids are PAV-smoothed
+    (non-increasing in K); K at p = 0.5/0.25/0.75 is interpolated on the collapsed fit."""
+    K, b, a = (np.asarray(x, dtype=float) for x in (strikes, bid, ask))
+    ok = np.isfinite(K) & np.isfinite(b) & np.isfinite(a) & (a - b <= max_spread)
+    K, mid = K[ok], ((b + a) / 2)[ok]
+    if len(K) < 2:
+        return np.nan, np.nan
+    order = np.argsort(K, kind="stable")
+    K, fit = K[order], pav_decreasing(mid[order])
+    if fit.max() < 0.75 or fit.min() > 0.25:
+        return np.nan, np.nan
+    levels = np.unique(fit)  # increasing p; mean K per level collapses flat runs
+    kbar = np.array([K[fit == lv].mean() for lv in levels])
+    k50, k25, k75 = (float(np.interp(q, levels, kbar)) for q in (0.5, 0.25, 0.75))
+    return k50, (k25 - k75) / (2 * 0.6745 * k50)
+
+
+def ladder_table(hourly, markets, decision_times):
+    """Ladder (M, sigma_imp) per (event_ticker, decision_ts), from hourly quotes at exactly decision_ts."""
+    mk = markets[markets.strike_type == "greater"][["ticker", "event_ticker", "floor"]]
+    h = hourly[["ticker", "ts", "bid", "ask"]].copy()
+    h["ts"] = pd.to_datetime(h.ts, utc=True)
+    h = h.merge(mk, on="ticker")
+    rows = []
+    for ev, ts in zip(decision_times.event_ticker, decision_times.decision_ts):
+        ts = pd.Timestamp(ts)
+        ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts
+        g = h[(h.event_ticker == ev) & (h.ts == ts)]
+        M, sig = ladder_implied(g.floor.to_numpy(float), g.bid.to_numpy(float), g.ask.to_numpy(float))
+        rows.append((ev, ts, M, sig))
+    return pd.DataFrame(rows, columns=["event_ticker", "decision_ts", "M", "sigma_imp"])
