@@ -55,6 +55,7 @@ class MultiConfig:
     estimator: str = "S"
     v2_set: str = "F1"             # feature set for estimator "V2"; must equal v2.logit_v2.FROZEN["set"] (tested)
     hours: tuple = ts.HOURS
+    trade_markets: tuple = None    # None: every market trades; else the rest only feed the estimator (learn-only)
     total_cap: float = None        # option-1 baseline: every market's worst case summed against this one cap
 
     @property
@@ -94,6 +95,8 @@ def run(obs, cfg):
         g = g[g.H.isin(ts.HOURS)]
         tails = ts.tail_candidates(g)
         live = tails[tails.H.isin(cfg.hours) & tails.market.map(lambda m: days_seen.get(m, 0) >= cfg.warmup_days)]
+        if cfg.trade_markets is not None:
+            live = live[live.market.isin(cfg.trade_markets)]
         held = {}
         assumed = {}
         for t_dec in sorted(live.decision_ts.unique()):

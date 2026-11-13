@@ -256,3 +256,30 @@ def test_main_keeps_forward_days_on_open_date(monkeypatch):
     obs = _fwd_obs()
     seen = _capture_main(monkeypatch, "S", obs, dt.date(2027, 5, 12))
     assert len(seen["obs"]) == len(obs)
+
+
+def _two_markets():
+    a = _obs("A", 12, hour_utc=18, y=0.0)
+    b = _obs("B", 12, hour_utc=21, y=1.0)
+    return pd.concat([a, b], ignore_index=True)
+
+
+def test_trade_markets_none_identical():
+    obs = _two_markets()
+    cfg = dict(estimator="P", **CFG)
+    t0, d0, m0 = run(obs, MultiConfig(**cfg))
+    t1, d1, m1 = run(obs, MultiConfig(trade_markets=None, **cfg))
+    pd.testing.assert_frame_equal(t0, t1)
+    pd.testing.assert_frame_equal(d0, d1)
+    pd.testing.assert_frame_equal(m0, m1)
+
+
+def test_trade_markets_restricts():
+    obs = _two_markets()
+    cfg = dict(estimator="P", **CFG)
+    both, _, _ = run(obs, MultiConfig(**cfg))
+    assert set(both.market) == {"A", "B"}
+    only, _, _ = run(obs, MultiConfig(trade_markets=("A",), **cfg))
+    assert set(only.market) == {"A"}
+    a_alone, _, _ = run(obs[obs.market == "A"], MultiConfig(**cfg))
+    assert len(only) != len(a_alone) or not np.allclose(only.f.values, a_alone.f.values)
