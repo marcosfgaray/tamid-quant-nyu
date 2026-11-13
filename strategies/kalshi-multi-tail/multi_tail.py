@@ -49,6 +49,7 @@ class MultiConfig:
     warmup_days: int = ts.WARMUP_DAYS
     fee_rate: float = ts.FEE_RATE
     estimator: str = "S"
+    v2_set: str = "F3"             # feature set for estimator "V2" (v2/logit_v2.py)
     hours: tuple = ts.HOURS
     total_cap: float = None        # option-1 baseline: every market's worst case summed against this one cap
 
@@ -63,9 +64,10 @@ class MultiConfig:
 
 def _candidates(rows, est, cfg, day):
     out = []
+    min_n = getattr(est, "min_rows", cfg.min_cell_n)
     for r in rows.itertuples(index=False):
-        f, n = est.estimate(r.market, r.H, r.mid)
-        if n < cfg.min_cell_n or not np.isfinite(f):
+        f, n = est.estimate_row(r) if hasattr(est, "estimate_row") else est.estimate(r.market, r.H, r.mid)
+        if n < min_n or not np.isfinite(f):
             continue
         side, price, edge = ts.best_side(r.bid, r.ask, f, cfg)
         fill = r.ask_f if side == 1 else r.bid_f

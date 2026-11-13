@@ -104,6 +104,44 @@ def test_btc_regression():
     pd.testing.assert_frame_equal(got.reset_index(drop=True), base[cols].reset_index(drop=True), check_dtype=False)
 
 
+@pytest.mark.skipif(not BTC_OBS.exists(), reason="BTC long-history observations missing")
+def test_btc_regression_counts():
+    from multi_obs import load_btc_obs
+    tr, _, _ = run(load_btc_obs(BTC_OBS), MultiConfig(k=1, cap_k=0.03, estimator="S"))
+    assert len(tr) == 402
+    assert round(float(tr.pnl.sum()), 2) == 52.61
+
+
+class _RowStub:
+    min_rows = 0
+
+    def update(self, df):
+        pass
+
+    def estimate_row(self, r):
+        return 0.99, 10 ** 6
+
+
+class _EstStub:
+    def update(self, df):
+        pass
+
+    def estimate(self, market, H, mid):
+        return 0.99, 10 ** 6
+
+
+def test_estimate_row_dispatch(monkeypatch):
+    import multi_tail
+    obs = _obs("A", 8)
+    out = []
+    for stub in (_RowStub, _EstStub):
+        monkeypatch.setattr(multi_tail, "make_estimator", lambda kind, cfg, s=stub: s())
+        tr, _, _ = run(obs, MultiConfig(**CFG))
+        assert len(tr) > 0
+        out.append(tr.reset_index(drop=True))
+    pd.testing.assert_frame_equal(out[0], out[1])
+
+
 def test_sharpe_constant_zero():
     from multi_tail import sharpe
     assert sharpe(np.zeros(10)) == 0.0
