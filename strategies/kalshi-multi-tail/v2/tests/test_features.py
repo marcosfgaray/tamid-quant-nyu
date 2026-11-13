@@ -1,9 +1,16 @@
 import numpy as np
 import pandas as pd
 
+from datetime import date
 from math import erf, sqrt
+from pathlib import Path
 
-from v2.features import btc_settlement_series, ladder_implied, ladder_table, realized_sigma, settlement_series
+import yaml
+
+from v2.features import (btc_settlement_series, event_day, ladder_implied, ladder_table, load_events,
+                         realized_sigma, settlement_series)
+
+EVENTS = Path(__file__).resolve().parent.parent / "events.yaml"
 
 
 def _series(vals, start="2025-03-03T21:00:00Z"):
@@ -122,3 +129,30 @@ def test_ladder_uses_only_decision_ts():
     K2, p2 = np.delete(K, 5), np.delete(p, 5)
     M, sig = ladder_implied(K2, p2 - 0.005, p2 + 0.005)
     assert abs(ex.M.iloc[0] - M) < 1e-9 and abs(ex.sigma_imp.iloc[0] - sig) < 1e-9
+
+
+def test_event_day_on_date():
+    assert event_day("SPX", date(2025, 12, 10), load_events(EVENTS)) == 1
+
+
+def test_event_day_previous_date():
+    assert event_day("SPX", date(2025, 12, 11), load_events(EVENTS)) == 0
+
+
+def test_event_unmapped_market():
+    ev = load_events(EVENTS)
+    assert event_day("NATGAS", date(2025, 12, 10), ev) == 0  # FOMC day; gas report that week is Thu 12-11
+    assert event_day("WTI", date(2025, 12, 10), ev) == 1  # EIA petroleum report is Wed 12-10
+
+
+def test_events_yaml_sane():
+    fam = yaml.safe_load(EVENTS.read_text())["families"]
+    assert set(fam) == {"fomc", "cpi", "jobs", "eia_petroleum", "eia_gas"}
+    for name, f in fam.items():
+        assert f["source"] and f["markets"] and f["time_et"]
+        ds = [pd.Timestamp(d).date() for d in f["dates"]]
+        assert len(ds) == len(set(ds)), name
+        assert all(date(2024, 7, 1) <= d <= date(2027, 6, 30) for d in ds), name
+    assert len(fam["eia_petroleum"]["dates"]) >= 140 and len(fam["eia_gas"]["dates"]) >= 140
+    for y in (2025, 2026):
+        assert sum(pd.Timestamp(d).year == y for d in fam["fomc"]["dates"]) == 8

@@ -1,6 +1,9 @@
 """Predictor v2 features: settlement series and realized vol (spec section 5, F-vol)."""
+from datetime import date
+
 import numpy as np
 import pandas as pd
+import yaml
 
 
 def settlement_series(markets):
@@ -83,3 +86,20 @@ def ladder_table(hourly, markets, decision_times):
         M, sig = ladder_implied(g.floor.to_numpy(float), g.bid.to_numpy(float), g.ask.to_numpy(float))
         rows.append((ev, ts, M, sig))
     return pd.DataFrame(rows, columns=["event_ticker", "decision_ts", "M", "sigma_imp"])
+
+
+def load_events(path):
+    """Event calendar: market -> set of NY dates with a scheduled release (union over families)."""
+    with open(path) as fh:
+        fams = yaml.safe_load(fh)["families"]
+    out = {}
+    for fam in fams.values():
+        days = {d if isinstance(d, date) else date.fromisoformat(str(d)) for d in fam["dates"]}
+        for m in fam["markets"]:
+            out.setdefault(m, set()).update(days)
+    return out
+
+
+def event_day(market, day, events):
+    """1 if `day` (NY date) is a scheduled event day for `market`, else 0 (unmapped markets give 0)."""
+    return int(day in events.get(market, ()))
