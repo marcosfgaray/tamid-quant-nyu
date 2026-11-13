@@ -3,11 +3,10 @@
 # published before the release, so this is not lookahead). A cancelled release has no date.
 #
 # Moved / cancelled releases (see task-4-report.md for the full ledger):
-#   CPI:  Sep-2025 data 2025-10-24 (orig. 2025-10-15, recalled); Oct-2025 data CANCELLED (no date);
-#         Nov-2025 data 2025-12-18 (orig. 2025-12-10); Jan-2026 data 2026-02-13 (orig. 2026-02-11).
-#   Jobs: Sep-2025 data 2025-11-20 (orig. 2025-10-03); Oct-2025 payrolls folded into the 2025-12-16 release
-#         (orig. 2025-11-07, no separate release); Nov-2025 data 2025-12-16 (orig. 2025-12-05);
-#         Jan-2026 data 2026-02-11 (orig. 2026-02-06). "orig." dates are recalled, not re-verified.
+#   CPI:  Sep-2025 data 2025-10-24; Oct-2025 data CANCELLED (no date);
+#         Nov-2025 data 2025-12-18; Jan-2026 data 2026-02-13.
+#   Jobs: Sep-2025 data 2025-11-20; Oct-2025 payrolls folded into the 2025-12-16 release; Nov-2025 data 2025-12-16;
+#         Jan-2026 data 2026-02-11.
 #   EIA petroleum: actual release dates from the EIA WPSR archive through 2026-11-12; later dates use
 #         the EIA published holiday schedule (Thu 2027-01-21, 2027-02-18, 2027-06-03) else Wednesday.
 #   EIA gas: Thursday except EIA published holiday exceptions.

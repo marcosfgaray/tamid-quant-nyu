@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from v2.logit_v2 import FEATURES, LogitV2Estimator
+from v2.logit_v2 import FEATURES, FROZEN, LogitV2Estimator
 
 D0 = date(2025, 1, 1)
 
@@ -99,6 +99,7 @@ def test_refit_cadence():
     assert est.last_fit_day == d + timedelta(days=7)
     assert n3 == int((df.day < d + timedelta(days=7)).sum()) > n1
     assert len(est.cond_log) == 2 and np.isfinite(est.cond)
+    assert est.fit_ok == [True, True]
 
 
 def test_unseen_market_offset_zero():
@@ -141,6 +142,12 @@ def test_make_estimator_v2():
     from estimators import make_estimator
     from multi_tail import MultiConfig
     est = make_estimator("V2", MultiConfig())
-    assert isinstance(est, LogitV2Estimator) and est.feature_set == "F3"
+    assert isinstance(est, LogitV2Estimator) and est.feature_set == FROZEN["set"]
     with pytest.raises(ValueError, match="S, P or V2"):
         make_estimator("X", MultiConfig())
+
+
+def test_constructor_defaults_are_frozen():
+    est = LogitV2Estimator()
+    got = dict(lam_beta=est.lam_beta, lam_alpha=est.lam_alpha, refit_days=est.refit_days, min_rows=est.min_rows)
+    assert got == {k: v for k, v in FROZEN.items() if k != "set"}

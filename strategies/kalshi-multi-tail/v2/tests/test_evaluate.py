@@ -67,3 +67,34 @@ def test_mde_formula():
     assert np.isclose(r["day_sd"], np.std(per_day, ddof=1))
     # constant delta: no sampling noise, so the MDE is 0
     assert np.isclose(evaluate.mde(day, np.full(len(day), 0.002))["mde"], 0.0)
+
+
+def _fwd_env(tmp_path, monkeypatch):
+    _rows(n_days=3).assign(market="BTC").to_csv(tmp_path / "features.csv", index=False)
+    (tmp_path / "raw").mkdir()
+    monkeypatch.setattr(evaluate, "OUT", tmp_path / "out")
+    monkeypatch.setattr(evaluate, "FEATURES_PATH", tmp_path / "features.csv")
+    monkeypatch.setattr(evaluate, "RAW_DIR", tmp_path / "raw")
+
+
+def test_today_cannot_move_forward(tmp_path, monkeypatch, capsys):
+    _fwd_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(evaluate, "_real_today", lambda: dt.date(2026, 11, 13))
+    monkeypatch.setattr(evaluate, "forward", lambda: (_ for _ in ()).throw(AssertionError("scored early")))
+    assert evaluate.main(["--period", "forward", "--today", "2027-06-01"]) == 0
+    assert "Forward data-quality check" in capsys.readouterr().out
+    assert not (tmp_path / "out" / "forward.txt").exists()
+
+
+def test_forward_opens_on_real_date(tmp_path, monkeypatch, capsys):
+    _fwd_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(evaluate, "forward", lambda: "FORWARD TEXT\n")
+    monkeypatch.setattr(evaluate, "_real_today", lambda: dt.date(2027, 5, 11))
+    evaluate.main(["--period", "forward"])
+    assert not (tmp_path / "out" / "forward.txt").exists()
+    monkeypatch.setattr(evaluate, "_real_today", lambda: dt.date(2027, 5, 12))
+    assert evaluate.main(["--period", "forward"]) == 0
+    assert (tmp_path / "out" / "forward.txt").read_text() == "FORWARD TEXT\n"
+    (tmp_path / "out" / "forward.txt").unlink()
+    evaluate.main(["--period", "forward", "--today", "2027-05-11"])       # earlier --today still refuses
+    assert not (tmp_path / "out" / "forward.txt").exists()

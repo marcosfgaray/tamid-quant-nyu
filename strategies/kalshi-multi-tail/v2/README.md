@@ -37,7 +37,7 @@ Fixed for the forward test. Nothing below changes without a new, pre-registered 
 - **Periods:** burn-in from 2024-07-05; development 2025-01-01 → 2026-06-30; holdout 2026-07-01 → 2026-11-11
   (seen period, not the verdict); forward 2026-11-12 → 2027-05-12, scored once on or after 2027-05-12. Primary
   scope BTC + SPX; the five-market results are exploratory.
-- **Code state:** freeze commit `cfb5b9335db9370fa40fb5096533e0d706a65e90` ("v2: freeze configuration (F1)"); the evaluation code was added after it in `be14c12` without touching the model.
+- **Code state:** freeze commit `cfb5b9335db9370fa40fb5096533e0d706a65e90` ("v2: freeze configuration (F1)"); the evaluation code was added after it in `be14c12`, which also generalized `select._frame` (selection output unchanged); the model is untouched.
 
 ### Disclosure: an earlier holdout look
 During Task 6 (the `multi_tail.run` V2 hook), a smoke run of `multi_tail.py --estimator V2` printed a holdout Sharpe
@@ -53,7 +53,7 @@ python -m v2.features --markets BTC SPX GOLD WTI NATGAS   # v2/output/features/f
 python -m v2.select                                       # development selection -> v2/output/selection.txt
 python -m v2.evaluate --period holdout                    # -> v2/output/holdout.txt
 python -m v2.evaluate --period forward                    # before 2027-05-12: data-quality counts only
-python multi_tail.py --estimator V2 --markets BTC SPX     # sizer run with v2 (set F1 via cfg.v2_set)
+python multi_tail.py --estimator V2 --markets BTC SPX     # sizer run with v2; the CLI passes the frozen set F1 (FROZEN["set"]), also the MultiConfig default
 python -m pytest v2/tests -q && python -m pytest tests -q
 ```
 
@@ -83,5 +83,7 @@ Before the forward verdict, refresh the data so it covers expiry days through 20
    ```
 3. Rebuild the v2 features: `python -m v2.features --markets BTC SPX GOLD WTI NATGAS`.
 4. On or after 2027-05-12: `python -m v2.evaluate --period forward` writes `v2/output/forward.txt`.
+
+Warning: once the data covers forward days, `multi_tail.py` holds back rows after 2026-11-11 until the real date is on or after 2027-05-12 (it prints how many); do not work around this, and do not inspect forward results (per-market P&L, Sharpe, log-loss) before then. `v2.evaluate --today` can only move the date earlier than the real one.
 
 Pulled Kalshi data, features, predictions and sim outputs are never committed.

@@ -36,12 +36,14 @@ def _features(cols, mid, H, vol_prem=None, vol_missing=None, event_day=None):
 
 
 class LogitV2Estimator:
-    def __init__(self, feature_set="F3", lam_beta=25.0, lam_alpha=25.0, refit_days=7, min_rows=200):
+    def __init__(self, feature_set="F3", lam_beta=FROZEN["lam_beta"], lam_alpha=FROZEN["lam_alpha"],
+                 refit_days=FROZEN["refit_days"], min_rows=FROZEN["min_rows"]):
         self.feature_set, self.cols = feature_set, FEATURES[feature_set]
         self.lam_beta, self.lam_alpha, self.refit_days, self.min_rows = lam_beta, lam_alpha, refit_days, min_rows
         self._X, self._lm, self._y, self._mkt, self._day = [], [], [], [], []
         self.last_fit_day, self.n_fit = None, 0
         self.cond, self.cond_log = float("nan"), []
+        self.fit_ok = []                      # L-BFGS-B convergence flag per fit (diagnostic only)
         self.warm_started = False
         self._w, self._key = None, None
 
@@ -93,7 +95,9 @@ class LogitV2Estimator:
         key = (tuple(cols_fit), tuple(markets))
         self.warm_started = self._w is not None and key == self._key
         w0 = self._w if self.warm_started else np.zeros(A.shape[1])
-        w = minimize(loss, w0, jac=True, method="L-BFGS-B").x
+        res = minimize(loss, w0, jac=True, method="L-BFGS-B")
+        w = res.x
+        self.fit_ok.append(bool(res.success))
         self._w, self._key = w, key
         self.cols_fit, self._use, self._mean, self._sd, self._fill = cols_fit, use, mean, sd, fill
         self.b0 = float(w[0])

@@ -3,7 +3,7 @@ Predictor v2 evaluation after the freeze (spec section 7).
 
     cd strategies/kalshi-multi-tail
     python -m v2.evaluate --period holdout             # -> v2/output/holdout.txt (seen period, not the verdict)
-    python -m v2.evaluate --period forward [--today D]  # before 2027-05-12: data-quality counts only
+    python -m v2.evaluate --period forward [--today D]  # --today can only move earlier; before 2027-05-12: data-quality counts only
 
 Both periods walk S, P and the frozen v2 (v2.logit_v2.FROZEN) forward over every row up to the period's last
 expiry day (training uses earlier rows as usual) and score only the period's days, with the common-row rule of
@@ -257,16 +257,21 @@ def data_quality():
     return "\n".join(L) + "\n"
 
 
+def _real_today():
+    return dt.date.today()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Predictor v2 holdout / forward evaluation (spec section 7)")
     ap.add_argument("--period", choices=["holdout", "forward"], required=True)
-    ap.add_argument("--today", type=dt.date.fromisoformat, default=None, help="default: the real current date")
+    ap.add_argument("--today", type=dt.date.fromisoformat, default=None, help="test an earlier date; later than the real date is ignored")
     a = ap.parse_args(argv)
     if a.period == "holdout":
         text = holdout()
         out = Path(OUT) / "holdout.txt"
     else:
-        today = a.today or dt.date.today()
+        real = _real_today()
+        today = min(a.today, real) if a.today else real      # --today can only move earlier, never open the verdict
         if today < FORWARD_OPEN:
             print(data_quality(), end="")
             return 0

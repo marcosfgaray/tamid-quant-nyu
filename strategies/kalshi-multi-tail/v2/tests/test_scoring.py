@@ -67,6 +67,7 @@ def test_block_bootstrap_short_series():
     lab = np.array([dt.date(2025, 1, 1), dt.date(2025, 1, 2), dt.date(2025, 1, 3)] * 4)
     b = block_bootstrap_delta(lab, np.arange(12.0))
     assert b.shape == (4000,) and np.isfinite(b).all()
+    assert np.allclose(b, np.arange(12.0).mean())       # D < 7: one block of all days = full-sample row-weighted mean
 
 
 def _losses(gap, noise, seed=5, n_days=60, per_day=20):

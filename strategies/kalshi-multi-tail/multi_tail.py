@@ -9,6 +9,7 @@ P (each market shrunk toward the cross-market pooled rate), walk-forward on prio
 
 Spec: docs/superpowers/specs/2026-11-12-multi-market-tail-design.md
 """
+import datetime as dt
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ V2_FEATURES = HERE / "v2" / "output" / "features" / "features.csv"
 V2_OUT_DIR = HERE / "v2" / "output" / "sim"
 CHECK = ("2026-01-01", "2026-06-30")
 HOLDOUT = ("2026-07-01", "2026-11-11")
+FORWARD_OPEN = dt.date(2027, 5, 12)   # spec section 7: forward expiry days are not looked at before this date
 TRADE_COLS = ts.TRADE_COLS + ["market", "group"]
 DAILY_COLS = ["day", "pnl", "ret", "n_trades", "n_wins", "n_markets", "deployed",
               "assumed_max_market", "assumed_topk", "assumed_all",
@@ -51,7 +53,7 @@ class MultiConfig:
     warmup_days: int = ts.WARMUP_DAYS
     fee_rate: float = ts.FEE_RATE
     estimator: str = "S"
-    v2_set: str = "F3"             # feature set for estimator "V2" (v2/logit_v2.py)
+    v2_set: str = "F1"             # feature set for estimator "V2"; must equal v2.logit_v2.FROZEN["set"] (tested)
     hours: tuple = ts.HOURS
     total_cap: float = None        # option-1 baseline: every market's worst case summed against this one cap
 
@@ -292,6 +294,22 @@ def load_features(keys, path=V2_FEATURES):
     return o
 
 
+def _real_today():
+    return dt.date.today()
+
+
+def hold_back_forward(obs, today=None):
+    """Drop rows with day after the holdout end unless today >= FORWARD_OPEN (spec section 7). Returns (obs, n_held)."""
+    today = today or _real_today()
+    if today >= FORWARD_OPEN:
+        return obs, 0
+    keep = obs.day <= dt.date.fromisoformat(HOLDOUT[1])
+    n = int((~keep).sum())
+    if n:
+        print(f"held back {n} observation rows after {HOLDOUT[1]} (forward period, not looked at before {FORWARD_OPEN})")
+    return obs[keep].reset_index(drop=True), n
+
+
 def main(argv=None):
     import argparse
 
@@ -322,9 +340,15 @@ def main(argv=None):
     from multi_obs import load_all
     keys = a.markets or enabled_markets(a.min_history_days)
     obs = load_features(keys) if a.estimator == "V2" else load_all(keys)
+    obs, _ = hold_back_forward(obs)
     out = Path(a.out_dir or (V2_OUT_DIR if a.estimator == "V2" else OUT_DIR))
     out.mkdir(parents=True, exist_ok=True)
-    base = dict(bankroll=a.bankroll, cap_m=a.cap, k=a.k, cap_k=a.cap_k, q_max=a.q_max, min_edge=a.min_edge,
+    if a.estimator == "V2":
+        from v2.logit_v2 import FROZEN
+        extra = dict(v2_set=FROZEN["set"])
+    else:
+        extra = {}
+    base = dict(extra, bankroll=a.bankroll, cap_m=a.cap, k=a.k, cap_k=a.cap_k, q_max=a.q_max, min_edge=a.min_edge,
                 slip=a.slip, n0=a.n0, n1=a.n1, warmup_days=a.warmup_days)
     btc = obs[obs.market == "BTC"]
     runs = {}

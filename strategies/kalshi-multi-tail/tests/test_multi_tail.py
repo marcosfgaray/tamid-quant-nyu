@@ -1,4 +1,5 @@
 import datetime as dt
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -196,3 +197,62 @@ def test_pnl_corr_uses_days_both_traded():
                        "pnl": [1.0, 2.0, -5.0, 1.0, 2.0, 9.0]})
     c = pnl_corr(md)
     assert c.loc["A", "B"] == pytest.approx(1.0)        # only days 1 and 2 are shared
+
+
+# --- final review fixes -----------------------------------------------------
+def test_multiconfig_v2_set_matches_frozen():
+    from v2.logit_v2 import FROZEN
+    assert MultiConfig().v2_set == FROZEN["set"]
+
+
+class _Stop(Exception):
+    pass
+
+
+def _fwd_obs():
+    return _obs("BTC", 3, start=dt.date(2026, 11, 11))      # days 11-11, 11-12, 11-13
+
+
+def _capture_main(monkeypatch, estimator, obs, today):
+    import multi_obs
+    import multi_tail
+    seen = {}
+
+    def fake_run(o, cfg):
+        seen["obs"], seen["cfg"] = o, cfg
+        raise _Stop
+
+    monkeypatch.setattr(multi_obs, "load_all", lambda keys: obs.copy())
+    monkeypatch.setattr(multi_tail, "load_features", lambda keys, path=None: obs.copy())
+    monkeypatch.setattr(multi_tail, "run", fake_run)
+    monkeypatch.setattr(multi_tail, "_real_today", lambda: today)
+    try:
+        multi_tail.main(["--markets", "BTC", "--estimator", estimator, "--out-dir", tempfile.mkdtemp()])
+    except _Stop:
+        pass
+    return seen
+
+
+def test_main_v2_uses_frozen_set(monkeypatch):
+    from v2.logit_v2 import FROZEN
+    seen = _capture_main(monkeypatch, "V2", _fwd_obs(), dt.date(2026, 11, 13))
+    assert seen["cfg"].estimator == "V2" and seen["cfg"].v2_set == FROZEN["set"]
+
+
+def test_main_holds_back_forward_days_before_open(monkeypatch, capsys):
+    seen = _capture_main(monkeypatch, "S", _fwd_obs(), dt.date(2027, 5, 11))
+    assert max(seen["obs"].day) == dt.date(2026, 11, 11)
+    assert "held back" in capsys.readouterr().out
+
+
+def test_hold_back_message(capsys):
+    from multi_tail import hold_back_forward
+    o, n = hold_back_forward(_fwd_obs(), dt.date(2027, 5, 11))
+    assert n == len(_fwd_obs()) - len(o) > 0
+    assert str(n) in capsys.readouterr().out
+
+
+def test_main_keeps_forward_days_on_open_date(monkeypatch):
+    obs = _fwd_obs()
+    seen = _capture_main(monkeypatch, "S", obs, dt.date(2027, 5, 12))
+    assert len(seen["obs"]) == len(obs)
