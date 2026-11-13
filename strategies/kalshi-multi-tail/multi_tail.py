@@ -25,6 +25,8 @@ from estimators import make_estimator  # noqa: E402
 from multi_sizer import book_losses, size_multi, topk_sum  # noqa: E402
 
 OUT_DIR = HERE / "output"
+V2_FEATURES = HERE / "v2" / "output" / "features" / "features.csv"
+V2_OUT_DIR = HERE / "v2" / "output" / "sim"
 CHECK = ("2026-01-01", "2026-06-30")
 HOLDOUT = ("2026-07-01", "2026-11-11")
 TRADE_COLS = ts.TRADE_COLS + ["market", "group"]
@@ -275,12 +277,28 @@ def enabled_markets(min_days=None):
     return keys
 
 
+def load_features(keys, path=V2_FEATURES):
+    """v1 observations plus v2 feature columns (v2/features.py), typed as multi_obs.load_all types them."""
+    if not Path(path).exists():
+        raise FileNotFoundError(f"{path} missing: run python -m v2.features first")
+    o = pd.read_csv(path)
+    o = o[o.market.isin(keys)].reset_index(drop=True)
+    missing = sorted(set(keys) - set(o.market))
+    if missing:
+        raise SystemExit(f"{path} has no rows for {', '.join(missing)}")
+    o["expiry"] = pd.to_datetime(o.expiry, utc=True)
+    o["decision_ts"] = pd.to_datetime(o.decision_ts, utc=True)
+    o["day"] = pd.to_datetime(o.day).dt.date
+    return o
+
+
 def main(argv=None):
     import argparse
 
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--markets", nargs="*", default=None, help="market keys (default: enabled markets passing the gate)")
-    ap.add_argument("--estimator", choices=["S", "P"], default="S")
+    ap.add_argument("--estimator", choices=["S", "P", "V2"], default="S",
+                    help="V2 (v2/logit_v2.py) reads observations with features from v2/output/features/features.csv")
     ap.add_argument("--bankroll", type=float, default=1000.0)
     ap.add_argument("--cap", type=float, default=0.03, help="per-market worst-case cap c, fraction of bankroll")
     ap.add_argument("--k", type=int, default=2)
@@ -294,15 +312,17 @@ def main(argv=None):
     ap.add_argument("--min-history-days", type=int, default=None,
                     help="drop markets with fewer expiry days (default 150, spec section 2)")
     ap.add_argument("--all", action="store_true", help="S, P, BTC-only, option-1 baseline and k sensitivity")
-    ap.add_argument("--out-dir", default=str(OUT_DIR))
+    ap.add_argument("--out-dir", default=None, help=f"default {OUT_DIR} ({V2_OUT_DIR} for --estimator V2)")
     ap.add_argument("--no-plot", action="store_true")
     a = ap.parse_args(argv)
     check_args(a.k, a.cap, a.cap_k)
+    if a.all and a.estimator == "V2":
+        raise SystemExit("--all runs the v1 estimators only; run --estimator V2 without --all")
 
     from multi_obs import load_all
     keys = a.markets or enabled_markets(a.min_history_days)
-    obs = load_all(keys)
-    out = Path(a.out_dir)
+    obs = load_features(keys) if a.estimator == "V2" else load_all(keys)
+    out = Path(a.out_dir or (V2_OUT_DIR if a.estimator == "V2" else OUT_DIR))
     out.mkdir(parents=True, exist_ok=True)
     base = dict(bankroll=a.bankroll, cap_m=a.cap, k=a.k, cap_k=a.cap_k, q_max=a.q_max, min_edge=a.min_edge,
                 slip=a.slip, n0=a.n0, n1=a.n1, warmup_days=a.warmup_days)

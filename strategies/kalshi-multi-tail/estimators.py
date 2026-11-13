@@ -61,4 +61,4 @@ def make_estimator(kind, cfg):
     if kind == "V2":
         from v2.logit_v2 import LogitV2Estimator
         return LogitV2Estimator(cfg.v2_set)
-    raise ValueError(f"estimator must be S or P, got {kind!r}")
+    raise ValueError(f"estimator must be S, P or V2, got {kind!r}")
