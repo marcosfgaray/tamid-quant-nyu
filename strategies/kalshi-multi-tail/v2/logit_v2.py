@@ -15,6 +15,10 @@ FEATURES = {"F1": ["lm", "h3", "side", "side_lm"]}
 FEATURES["F2"] = FEATURES["F1"] + ["vol_prem", "vol_missing"]
 FEATURES["F3"] = FEATURES["F2"] + ["event_day"]
 
+# Frozen v2 configuration (spec section 6 freeze; chosen by v2/output/selection.txt). Do not change: the forward
+# verdict (spec section 7) is scored with exactly these settings.
+FROZEN = {"set": "F1", "lam_beta": 25, "lam_alpha": 25, "refit_days": 7, "min_rows": 200}
+
 
 def _logit(p):
     p = np.clip(np.asarray(p, float), *CLIP)
