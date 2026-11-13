@@ -37,7 +37,7 @@ Fixed for the forward test. Nothing below changes without a new, pre-registered 
 - **Periods:** burn-in from 2024-07-05; development 2025-01-01 → 2026-06-30; holdout 2026-07-01 → 2026-11-11
   (seen period, not the verdict); forward 2026-11-12 → 2027-05-12, scored once on or after 2027-05-12. Primary
   scope BTC + SPX; the five-market results are exploratory.
-- **Code state:** freeze commit `<hash: filled in after the commit>`.
+- **Code state:** freeze commit `cfb5b9335db9370fa40fb5096533e0d706a65e90` ("v2: freeze configuration (F1)"); the evaluation code was added after it in `be14c12` without touching the model.
 
 ### Disclosure: an earlier holdout look
 During Task 6 (the `multi_tail.run` V2 hook), a smoke run of `multi_tail.py --estimator V2` printed a holdout Sharpe
