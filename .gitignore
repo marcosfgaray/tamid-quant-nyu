@@ -6,3 +6,4 @@ strategies/kalshi-multi-tail/output/obs/
 .pytest_cache/
 strategies/kalshi-multi-tail/v2/output/features/
 strategies/kalshi-multi-tail/v2/output/preds/
+strategies/kalshi-multi-tail/v2/output/sim/
