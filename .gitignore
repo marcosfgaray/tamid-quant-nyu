@@ -4,3 +4,5 @@ strategies/btc-kalshi-digital/output/btc_pm/
 strategies/kalshi-multi-tail/output/raw/
 strategies/kalshi-multi-tail/output/obs/
 .pytest_cache/
+strategies/kalshi-multi-tail/v2/output/features/
+strategies/kalshi-multi-tail/v2/output/preds/

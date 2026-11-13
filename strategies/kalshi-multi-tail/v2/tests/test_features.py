@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from v2.features import (btc_settlement_series, event_day, ladder_implied, ladder_table, load_events,
+from v2.features import (btc_settlement_series, build_features, event_day, ladder_implied, ladder_table, load_events,
                          realized_sigma, settlement_series)
 
 EVENTS = Path(__file__).resolve().parent.parent / "events.yaml"
@@ -156,3 +156,82 @@ def test_events_yaml_sane():
     assert len(fam["eia_petroleum"]["dates"]) >= 140 and len(fam["eia_gas"]["dates"]) >= 140
     for y in (2025, 2026):
         assert sum(pd.Timestamp(d).year == y for d in fam["fomc"]["dates"]) == 8
+
+
+def test_ladder_spread_float_tolerance():
+    bid = np.array([0.82, 0.45, 0.24, 0.18])
+    ask = np.array([0.92, 0.55, 0.34, 0.28])
+    assert (ask - bid > 0.10).all()  # every spread is 0.10 up to float error, just over the cutoff
+    M, sig = ladder_implied([90.0, 100.0, 110.0, 120.0], bid, ask)
+    assert np.isfinite(M) and np.isfinite(sig)
+
+
+def test_ladder_table_dedupes_quotes():
+    K, p = _ladder()
+    t0 = pd.Timestamp("2025-02-18 14:00:00", tz="UTC")
+    tick = [f"T{i}" for i in range(len(K))]
+    markets = pd.DataFrame({"ticker": tick, "event_ticker": ["E"] * len(K),
+                            "strike_type": ["greater"] * len(K), "floor": list(K)})
+    h = pd.DataFrame({"ticker": tick, "ts": str(t0), "bid": p - 0.005, "ask": p + 0.005,
+                      "close": p, "volume": 1, "open_interest": 1})
+    stale = h.copy()
+    stale["bid"], stale["ask"] = 0.0, 0.01   # duplicate (ticker, ts) rows; the first one wins
+    dt = pd.DataFrame({"event_ticker": ["E"], "decision_ts": [t0]})
+    base = ladder_table(h, markets, dt)
+    pd.testing.assert_frame_equal(ladder_table(pd.concat([h, stale]), markets, dt), base)
+
+
+def _synth(cut_scramble):
+    """Two synthetic markets (AAA from expiration_value, BTC from spot), 30 daily expiries, H=6 rows."""
+    rng = np.random.default_rng(5)
+    days = pd.date_range("2025-03-01 21:00", periods=30, freq="D", tz="UTC")
+    cut = days[25].normalize()
+    K = 100 * np.exp(np.linspace(-0.1, 0.1, 20))
+    obs_rows, raw = [], {}
+    spot_t = pd.date_range(days[0].normalize(), days[-1] + pd.Timedelta(days=1), freq="h", tz="UTC")
+    spot_open = 100 * np.exp(np.cumsum(rng.normal(0, 0.003, len(spot_t))))
+    for mk in ("AAA", "BTC"):
+        vals = 100 * np.exp(np.cumsum(rng.normal(0, 0.01, 30)))
+        mrows, hrows = [], []
+        for i, e in enumerate(days):
+            ev = f"{mk}-E{i}"
+            sig = 0.02 + 0.001 * i
+            pp = 1 - _phi(np.log(K / 100) / sig)
+            for j, k in enumerate(K):
+                v = vals[i] * (5 if (cut_scramble and e >= cut) else 1)
+                mrows.append(dict(ticker=f"{ev}-{j}", event_ticker=ev, strike_type="greater", floor=k,
+                                  expiry=str(e), result="yes", expiration_value=v))
+                for h in range(8, 21):
+                    ts = e.normalize() + pd.Timedelta(hours=h)
+                    dts = e - pd.Timedelta(hours=6)
+                    q = pp[j]
+                    if cut_scramble and e.normalize() == cut:
+                        if ts == dts + pd.Timedelta(hours=1):
+                            continue
+                        if ts > dts:
+                            q = 1 - pp[j]
+                    hrows.append(dict(ticker=f"{ev}-{j}", ts=str(ts), bid=q - 0.005, ask=q + 0.005))
+            obs_rows.append(dict(market=mk, ticker=f"{ev}-10", expiry=e, day=e.date(), H=6,
+                                 decision_ts=e - pd.Timedelta(hours=6), mid=0.5))
+        raw[mk] = (pd.DataFrame(mrows), pd.DataFrame(hrows))
+    so = spot_open.copy()
+    if cut_scramble:
+        so[spot_t >= cut] *= 5
+    spot = pd.DataFrame({"time": spot_t.astype(str), "open": so, "high": so, "low": so, "close": so})
+    return pd.DataFrame(obs_rows), raw, spot, cut
+
+
+def test_no_lookahead_scramble():
+    ev = load_events(EVENTS)
+    hours = {"AAA": 6.5, "BTC": 24}
+    o, raw, spot, cut = _synth(False)
+    o2, raw2, spot2, _ = _synth(True)
+    a = build_features(o, raw, spot, ev, hours)
+    b = build_features(o2, raw2, spot2, ev, hours)
+    day = a.expiry.dt.normalize() == cut
+    assert day.sum() == 2
+    cols = ["sigma_H", "M", "sigma_imp", "vol_prem", "vol_missing", "event_day"]
+    assert a.loc[day, cols].notna().all().all()
+    pd.testing.assert_frame_equal(a.loc[day, cols], b.loc[day, cols])
+    # the scramble does change later days, so the test is not vacuous
+    assert not np.allclose(a.sigma_H.iloc[-1], b.sigma_H.iloc[-1]) or not np.allclose(a.M.iloc[-1], b.M.iloc[-1])
