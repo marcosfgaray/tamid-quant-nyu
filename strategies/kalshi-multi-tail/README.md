@@ -50,4 +50,6 @@ so nothing below changes without a new, pre-registered spec.
 - Rounds 6h and 3h before each market's expiry; taker fill at the next hour's quote; fee 0.07 × P × (1 − P), rounded up per order
 - Code state: this commit; tests `python -m pytest tests -q` (32 passing)
 
+Predictor v2 (pooled logistic estimator, frozen 2026-11-13, holdout and forward evaluation): see `v2/README.md`.
+
 Results page (charts of both runs): https://claude.ai/artifact/VLG94kNrxNmt4V4JW2JWAi

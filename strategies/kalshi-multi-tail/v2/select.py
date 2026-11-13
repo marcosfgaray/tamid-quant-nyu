@@ -55,14 +55,16 @@ def _predict_all(obs, cfg):
 
 
 def _frame(preds):
-    base = preds[ESTIMATORS[0]][KEY].reset_index(drop=True)
+    """One row per walk-forward row, with p_/n_/ll_ columns for every estimator in `preds` plus mid."""
+    names = list(preds)
+    base = preds[names[0]][KEY].reset_index(drop=True)
     for name, p in preds.items():
         if not p[["day", "ticker", "H"]].reset_index(drop=True).equals(base[["day", "ticker", "H"]]):
-            raise RuntimeError(f"walk-forward rows for {name} differ from {ESTIMATORS[0]}")
+            raise RuntimeError(f"walk-forward rows for {name} differ from {names[0]}")
         base[f"p_{name}"] = p.p.values
         base[f"n_{name}"] = p.n.values
     base["p_mid"] = base.mid
-    for name in ESTIMATORS + ["mid"]:
+    for name in names + ["mid"]:
         base[f"ll_{name}"] = logloss(base[f"p_{name}"], base.y)
     return base
 

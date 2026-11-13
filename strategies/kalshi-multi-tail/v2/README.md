@@ -57,6 +57,17 @@ python multi_tail.py --estimator V2 --markets BTC SPX     # sizer run with v2 (s
 python -m pytest v2/tests -q && python -m pytest tests -q
 ```
 
+## Holdout (2026-07-01 → 2026-11-11): seen period, not the verdict
+Run once after the freeze; full report in `v2/output/holdout.txt`. BTC + SPX, 4,155 common rows over 134 days.
+- Log-loss per row: v2 (F1) 0.08207, v1 P 0.08504, mid 0.08932; on the v1 S subset (3,937 rows) v2 0.07806,
+  S 0.07985.
+- Paired Δ (one-sided 95th percentile of the block bootstrap): v2 − P −0.00296 (−0.00025, passes);
+  v2 − S −0.00180 (+0.00001, does not pass); v2 − mid −0.00724 (−0.00116, passes).
+- Minimum detectable effect for the 181-day forward window: 0.0042 against P, 0.0026 against S. The holdout Δ
+  against P (0.0030) and S (0.0018) are both below these, so the forward test may well come out "not shown".
+- Sharpe through the frozen sizer: v2 2.51, P 1.24; difference +1.27, 95% CI [−4.09, +7.62].
+- Five markets (exploratory): v2 − P −0.00166, v2 − S −0.00197; Sharpe v2 1.58, P 0.67.
+
 ## Forward refresh (spec section 9)
 Before the forward verdict, refresh the data so it covers expiry days through 2027-05-12:
 1. For each non-BTC market, re-run the pull for recent days, then rebuild the observations:
