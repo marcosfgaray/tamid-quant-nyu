@@ -143,7 +143,7 @@ def test_make_estimator_v2():
     from multi_tail import MultiConfig
     est = make_estimator("V2", MultiConfig())
     assert isinstance(est, LogitV2Estimator) and est.feature_set == FROZEN["set"]
-    with pytest.raises(ValueError, match="S, P or V2"):
+    with pytest.raises(ValueError, match="S, P, V2 or V3"):
         make_estimator("X", MultiConfig())
 
 
