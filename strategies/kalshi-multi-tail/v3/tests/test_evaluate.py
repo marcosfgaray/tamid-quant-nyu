@@ -6,6 +6,7 @@ import pandas as pd
 import multi_tail as mt
 from multi_tail import MultiConfig
 from v2.scoring import logloss, walk_forward_predict
+from v2 import evaluate as v2_evaluate
 from v3 import blend, evaluate
 from v3.blend import BlendEstimator
 from test_blend import CFG, _obs
@@ -23,8 +24,8 @@ def _fwd_env(tmp_path, monkeypatch):
     _rows(n_days=3).assign(market="BTC").to_csv(tmp_path / "features.csv", index=False)
     (tmp_path / "raw").mkdir()
     monkeypatch.setattr(evaluate, "OUT", tmp_path / "out")
-    monkeypatch.setattr(evaluate, "FEATURES_PATH", tmp_path / "features.csv")
-    monkeypatch.setattr(evaluate, "RAW_DIR", tmp_path / "raw")
+    monkeypatch.setattr(v2_evaluate, "FEATURES_PATH", tmp_path / "features.csv")      # data_quality is v2's
+    monkeypatch.setattr(v2_evaluate, "RAW_DIR", tmp_path / "raw")
 
 
 def test_v3_forward_refuses_early(tmp_path, monkeypatch, capsys):

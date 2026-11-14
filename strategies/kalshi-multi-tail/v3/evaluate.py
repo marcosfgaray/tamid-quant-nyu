@@ -13,18 +13,17 @@ verdict: WIN only if both delta_P = LL(v3) - LL(P) and delta_F1 = LL(v3) - LL(F1
 scope BTC + SPX; the five-market block is exploratory. Helpers, periods and the forward guard come from v2.evaluate.
 """
 import argparse
-import dataclasses
 import datetime as dt
 import time
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 import multi_tail as mt
 from estimators import make_estimator
 from multi_tail import V2_FEATURES, MultiConfig, load_features
 from v2.evaluate import FIVE, FORWARD, FORWARD_OPEN, HOLDOUT, MDE_DAYS, PRIMARY, _check_frozen, mde, one_sided
+from v2.evaluate import data_quality  # reads v2.evaluate.FEATURES_PATH / RAW_DIR
 from v2.evaluate import _cfg as _v2_cfg
 from v2.logit_v2 import FROZEN as F1_FROZEN
 from v2.scoring import one_contract_pnl, walk_forward_predict, would_trade
@@ -34,7 +33,6 @@ from v3.blend import FROZEN, P_MIN_N, BlendEstimator
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "output"
 FEATURES_PATH = V2_FEATURES
-RAW_DIR = HERE.parent / "output" / "raw"
 MODELS = {"V3": "V3", "P": "P", "F1": "V2"}          # report name -> multi_tail estimator kind
 
 
@@ -203,28 +201,6 @@ def forward(cfg=None):
     cfg = cfg or MultiConfig()
     header = [f"FORWARD: the verdict (spec section 7), scored once on or after {FORWARD_OPEN}"]
     return _evaluate(*FORWARD, header, cfg, with_verdict=True)
-
-
-def data_quality():
-    """Row and day counts per market on forward expiry days, and the failed-day files. Nothing is scored."""
-    L = [f"Forward data-quality check (no scoring before {FORWARD_OPEN}); expiry days >= {FORWARD[0]}"]
-    if Path(FEATURES_PATH).exists():
-        f = pd.read_csv(FEATURES_PATH, usecols=["market", "day"])
-        f = f[pd.to_datetime(f.day).dt.date >= FORWARD[0]]
-        L += [f"features: {FEATURES_PATH}", f"  {'market':<8}{'rows':>8}{'days':>6}"]
-        for m in FIVE:
-            g = f[f.market == m]
-            L.append(f"  {m:<8}{len(g):8d}{g.day.nunique():6d}")
-    else:
-        L.append(f"features file missing: {FEATURES_PATH} (run python -m v2.features)")
-    L.append(f"failed-day files under {RAW_DIR}:")
-    files = sorted(Path(RAW_DIR).glob("*/failed_days.txt")) if Path(RAW_DIR).exists() else []
-    if not files:
-        L.append("  none")
-    for p in files:
-        lines = [x for x in p.read_text().splitlines() if x.strip()]
-        L.append(f"  {p.parent.name}: {len(lines)} line(s)" + "".join(f"\n    {x}" for x in lines))
-    return "\n".join(L) + "\n"
 
 
 def _real_today():
