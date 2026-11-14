@@ -185,7 +185,8 @@ def _evaluate(start, end, header, cfg, with_verdict):
     df5 = score(obs5, start, end, cfg)
     L += ["", f"=== EXPLORATORY: five markets ({' + '.join(FIVE)}), no decision attached ==="]
     L += report(df5, cfg, mde_block=False) + [""] + sharpe_block(obs5, start, end, cfg)
-    L += ["", f"runtime {time.time() - t0:.0f}s"]
+    L.append("")
+    print(f"runtime {time.time() - t0:.0f}s")
     return "\n".join(L) + "\n"
 
 
@@ -197,9 +198,15 @@ def holdout(cfg=None):
     return _evaluate(*HOLDOUT, header, cfg, with_verdict=False)
 
 
+MULTIPLICITY = ("v2 and v3 verdicts are read on the same forward window, each at its own 5% level, "
+                "with no multiplicity correction.")
+
+
 def forward(cfg=None):
+    if _real_today() < FORWARD_OPEN:
+        raise RuntimeError(f"forward period is sealed until {FORWARD_OPEN}")
     cfg = cfg or MultiConfig()
-    header = [f"FORWARD: the verdict (spec section 7), scored once on or after {FORWARD_OPEN}"]
+    header = [f"FORWARD: the verdict (spec section 7), scored once on or after {FORWARD_OPEN}", MULTIPLICITY]
     return _evaluate(*FORWARD, header, cfg, with_verdict=True)
 
 

@@ -41,4 +41,3 @@ Selection: lowest log-loss; take w = 0.5 if within 1 SE of the best on the paire
   1.00     0.09232       +0.00080   0.00049  no
 CHOSEN w: 0.50
 
-runtime 2s

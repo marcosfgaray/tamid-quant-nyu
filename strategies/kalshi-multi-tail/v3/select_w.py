@@ -66,7 +66,7 @@ def _scored_frame(obs, cfg, score_start):
     for w in WEIGHTS:
         p = np.clip(w * df.p_P + (1 - w) * df.p_F1, *CLIP)
         df[f"p_{_name(w)}"] = np.where(df.scored, p, np.nan)
-        df[f"ll_{_name(w)}"] = logloss(p.fillna(0.5), df.y)
+        df[f"ll_{_name(w)}"] = np.where(df.scored, logloss(p.fillna(0.5), df.y), np.nan)
     return df, dev, f1_min
 
 
@@ -113,12 +113,13 @@ def main():
     t0 = time.time()
     obs = load_dev(MARKETS)
     chosen, df, text = run_selection(obs, return_frame=True)
-    text += f"\nruntime {time.time() - t0:.0f}s\n"
     (OUT / "preds").mkdir(parents=True, exist_ok=True)
     df[KEY + ["p_P", "n_P", "p_F1", "n_F1", "scored"] + [f"p_{_name(w)}" for w in WEIGHTS]].to_csv(
         OUT / "preds" / "dev_blend.csv", index=False)
+    text += "\n"
     (OUT / "selection.txt").write_text(text)
     print(text)
+    print(f"runtime {time.time() - t0:.0f}s")
 
 
 if __name__ == "__main__":

@@ -103,4 +103,3 @@ Sharpe through the frozen sizer (multi_tail.run: c = 3%, k = 2, C = 4%, $1,000);
   Sharpe(V3) - Sharpe(P) = +1.08, 95% CI [-1.66, +4.29] (paired_diff_ci, same days)
   Sharpe(V3) - Sharpe(F1) = +0.17, 95% CI [-2.36, +3.31] (paired_diff_ci, same days)
 
-runtime 23s

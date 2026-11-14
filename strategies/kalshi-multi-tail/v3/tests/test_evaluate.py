@@ -1,6 +1,7 @@
 import datetime as dt
 
 import numpy as np
+import pytest
 import pandas as pd
 
 import multi_tail as mt
@@ -49,6 +50,23 @@ def test_v3_forward_opens_on_real_date(tmp_path, monkeypatch):
     monkeypatch.setattr(evaluate, "_real_today", lambda: dt.date(2027, 5, 12))
     assert evaluate.main(["--period", "forward"]) == 0
     assert (tmp_path / "out" / "forward.txt").read_text() == "FORWARD TEXT\n"
+
+
+def test_v3_forward_report_has_multiplicity_note(tmp_path, monkeypatch):
+    _fwd_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(evaluate, "_real_today", lambda: dt.date(2027, 5, 12))
+    monkeypatch.setattr(evaluate, "_evaluate", lambda start, end, header, cfg, with_verdict: "\n".join(header))
+    text = evaluate.forward()
+    assert ("v2 and v3 verdicts are read on the same forward window, each at its own 5% level, "
+            "with no multiplicity correction.") in text
+
+
+def test_v3_forward_direct_call_guarded(tmp_path, monkeypatch):
+    _fwd_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(evaluate, "_real_today", lambda: dt.date(2027, 5, 11))
+    monkeypatch.setattr(evaluate, "_evaluate", lambda *a: (_ for _ in ()).throw(AssertionError("scored early")))
+    with pytest.raises(RuntimeError):
+        evaluate.forward()
 
 
 def _frame(df, p_v3, p_p, p_f1):

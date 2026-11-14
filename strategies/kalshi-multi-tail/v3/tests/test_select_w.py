@@ -2,6 +2,7 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from multi_tail import MultiConfig
 from v2.scoring import PRED_COLS
@@ -84,7 +85,8 @@ def test_select_w_ignores_post_dev_rows(monkeypatch):
     assert "CHOSEN w:" in t_dev
 
 
-def test_select_w_degenerate_note(monkeypatch):
+@pytest.mark.parametrize("w_star", [0.0, 1.0])
+def test_select_w_degenerate_note(monkeypatch, w_star):
     rng = np.random.default_rng(3)
     day = _days(D=40, per=20, start=dt.date(2025, 2, 1))
     y = (rng.uniform(size=len(day)) < 0.1).astype(float)
@@ -92,13 +94,15 @@ def test_select_w_degenerate_note(monkeypatch):
                              ticker=[f"t{i}" for i in range(len(day))], H=np.where(np.arange(len(day)) % 3, 6, 3),
                              mid=0.1, bid=0.095, ask=0.105, bid_f=0.095, ask_f=0.105, y=y))
 
+    good = np.where(y == 1, 0.9, 0.02)
+
     def fake(obs, est, cfg):
         if type(est).__name__ == "PooledEstimator":
-            return base.assign(p=np.where(y == 1, 0.9, 0.02), n=500)[PRED_COLS]
-        return base.assign(p=0.5, n=1000)[PRED_COLS]
+            return base.assign(p=good if w_star == 1.0 else 0.5, n=500)[PRED_COLS]
+        return base.assign(p=good if w_star == 0.0 else 0.5, n=1000)[PRED_COLS]
 
     monkeypatch.setattr(select_w, "walk_forward_predict", fake)
     text = select_w.run_selection(_obs(dt.date(2025, 1, 1), 2), CFG)
-    assert "CHOSEN w: 1.00" in text
+    assert f"CHOSEN w: {w_star:.2f}" in text
     assert NO_ARM_LINE in text
     assert NO_ARM_LINE == "Chosen w reproduces a component; no new v3 arm is frozen."
