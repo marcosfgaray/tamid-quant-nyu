@@ -13,7 +13,7 @@ from v2.logit_v2 import FROZEN as F1, LogitV2Estimator
 CLIP = (0.001, 0.999)
 P_MIN_N = 100
 # Set by predictor v3 freeze (Task 3). None means not frozen.
-FROZEN = {"w": None}
+FROZEN = {"w": 0.5}
 
 
 class BlendEstimator:
