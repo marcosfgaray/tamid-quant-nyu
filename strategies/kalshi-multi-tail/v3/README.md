@@ -32,7 +32,7 @@ Fixed for the forward test. Nothing below changes without a new, pre-registered 
   one-sided tests pass (bootstrap 95th percentile < 0), else "not shown".
 - **Sizer for the Sharpe secondary:** v1's frozen settings (c = 3%, k = 2, C = 4% of $1,000, `Q_MAX = 50`,
   `SLIP = 0.02`, `MIN_EDGE = 0.005`).
-- **Code state:** freeze commit `<to be recorded>` ("v3: freeze w = 0.5").
+- **Code state:** freeze commit `70022ed9e2aa56c96176f83daf0b92fe94efeae8` ("v3: freeze w = 0.5"); the evaluation code and the `--estimator V3` CLI option were added after it in `cc240a4`; the blend and its components are untouched.
 
 ### Run
 ```
