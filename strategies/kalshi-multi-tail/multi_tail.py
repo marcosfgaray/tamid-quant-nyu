@@ -28,6 +28,7 @@ from multi_sizer import book_losses, size_multi, topk_sum  # noqa: E402
 OUT_DIR = HERE / "output"
 V2_FEATURES = HERE / "v2" / "output" / "features" / "features.csv"
 V2_OUT_DIR = HERE / "v2" / "output" / "sim"
+V3_OUT_DIR = HERE / "v3" / "output" / "sim"
 CHECK = ("2026-01-01", "2026-06-30")
 HOLDOUT = ("2026-07-01", "2026-11-11")
 FORWARD_OPEN = dt.date(2027, 5, 12)   # spec section 7: forward expiry days are not looked at before this date
@@ -318,8 +319,9 @@ def main(argv=None):
 
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--markets", nargs="*", default=None, help="market keys (default: enabled markets passing the gate)")
-    ap.add_argument("--estimator", choices=["S", "P", "V2"], default="S",
-                    help="V2 (v2/logit_v2.py) reads observations with features from v2/output/features/features.csv")
+    ap.add_argument("--estimator", choices=["S", "P", "V2", "V3"], default="S",
+                    help="V2 (v2/logit_v2.py) and V3 (v3/blend.py, frozen w) read observations with features from "
+                         "v2/output/features/features.csv")
     ap.add_argument("--bankroll", type=float, default=1000.0)
     ap.add_argument("--cap", type=float, default=0.03, help="per-market worst-case cap c, fraction of bankroll")
     ap.add_argument("--k", type=int, default=2)
@@ -333,18 +335,18 @@ def main(argv=None):
     ap.add_argument("--min-history-days", type=int, default=None,
                     help="drop markets with fewer expiry days (default 150, spec section 2)")
     ap.add_argument("--all", action="store_true", help="S, P, BTC-only, option-1 baseline and k sensitivity")
-    ap.add_argument("--out-dir", default=None, help=f"default {OUT_DIR} ({V2_OUT_DIR} for --estimator V2)")
+    ap.add_argument("--out-dir", default=None, help=f"default {OUT_DIR} ({V2_OUT_DIR} for V2, {V3_OUT_DIR} for V3)")
     ap.add_argument("--no-plot", action="store_true")
     a = ap.parse_args(argv)
     check_args(a.k, a.cap, a.cap_k)
-    if a.all and a.estimator == "V2":
-        raise SystemExit("--all runs the v1 estimators only; run --estimator V2 without --all")
+    if a.all and a.estimator in ("V2", "V3"):
+        raise SystemExit(f"--all runs the v1 estimators only; run --estimator {a.estimator} without --all")
 
     from multi_obs import load_all
     keys = a.markets or enabled_markets(a.min_history_days)
-    obs = load_features(keys) if a.estimator == "V2" else load_all(keys)
+    obs = load_features(keys) if a.estimator in ("V2", "V3") else load_all(keys)
     obs, _ = hold_back_forward(obs)
-    out = Path(a.out_dir or (V2_OUT_DIR if a.estimator == "V2" else OUT_DIR))
+    out = Path(a.out_dir or {"V2": V2_OUT_DIR, "V3": V3_OUT_DIR}.get(a.estimator, OUT_DIR))
     out.mkdir(parents=True, exist_ok=True)
     if a.estimator == "V2":
         from v2.logit_v2 import FROZEN

@@ -51,5 +51,6 @@ so nothing below changes without a new, pre-registered spec.
 - Code state: this commit; tests `python -m pytest tests -q` (32 passing)
 
 Predictor v2 (pooled logistic estimator, frozen 2026-11-13, holdout and forward evaluation): see `v2/README.md`.
+Predictor v3 (fixed blend w = 0.5 of v1 P and v2 F1, frozen 2026-11-13, holdout and forward evaluation): see `v3/README.md`.
 
 Results page (charts of both runs): https://claude.ai/artifact/VLG94kNrxNmt4V4JW2JWAi

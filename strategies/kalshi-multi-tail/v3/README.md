@@ -43,3 +43,15 @@ python -m v3.evaluate --period forward                    # before 2027-05-12: d
 python multi_tail.py --estimator V3 --markets BTC SPX     # sizer run with v3 -> v3/output/sim/ (git-ignored)
 python -m pytest v3/tests -q
 ```
+
+## Holdout (2026-07-01 → 2026-11-11): seen period, not the verdict
+Run once after the freeze; full report in `v3/output/holdout.txt`. BTC + SPX, 4,155 common rows over 134 days.
+
+- Log-loss: v3 0.08269, v1 P 0.08504, v2 F1 0.08207, mid 0.08932.
+- Δ_P = LL(v3) − LL(P) = −0.00234 (95th pct −0.00061, passes); Δ_F1 = +0.00062 (95th pct +0.00197, fails).
+  On the holdout v3 beats P but not F1, so it would be "not shown" by the forward rule.
+- MDE for the 181-day forward window: 0.00264 vs P, 0.00159 vs F1.
+- Sharpe through the frozen sizer: v3 3.62 (+14.14%, 288 trades), P 1.24 (+5.98%, 361), F1 2.51 (+9.83%, 158);
+  Sharpe(v3) − Sharpe(P) = +2.37, 95% CI [−1.31, +8.23]; Sharpe(v3) − Sharpe(F1) = +1.11, 95% CI [−3.81, +6.77].
+
+The verdict is the forward test (2026-11-12 → 2027-05-12, scored once on or after 2027-05-12).
