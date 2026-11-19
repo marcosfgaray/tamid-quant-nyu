@@ -19,4 +19,7 @@ Nothing after 2026-11-11 is included; the forward test (2026-11-12 to 2027-05-12
   script (`btc-kalshi-digital/btc_pm_data_pull.py`), so its columns differ slightly from the other four
   (`kalshi-multi-tail/multi_pull.py`)
 
-Not included: per-contract JSON caches (duplicates of these CSVs) and BTC spot prices (Coinbase, not Kalshi).
+- `BTC/spot_hourly_coinbase.csv`: hourly BTC-USD candles from Coinbase (`time, open, high, low, close`, UTC), 2024-03-17 to
+  2026-11-11, 23,267 rows; used for the volatility model in the BTC digital backtest. Not Kalshi data
+
+Not included: per-contract JSON caches (duplicates of these CSVs).
